@@ -534,8 +534,8 @@ impl<E: Pairing> HybridPlonk<E> {
 		let log_number_of_gates = ckt.log_number_of_gates;
 		let number_of_gates = 1 << log_number_of_gates;
 		let number_of_wires = ckt.number_of_wires;
-		//let number_of_initial_rounds = (log_number_of_gates as f64).log2().ceil() as usize;
-		let number_of_initial_rounds = 7;
+		let number_of_initial_rounds = (log_number_of_gates as f64).log2().ceil() as usize;
+		//let number_of_initial_rounds = 7;
 		let seed = [21u8; 32];
 		let mut rng = StdRng::from_seed(seed);
 		
