@@ -1,21 +1,13 @@
-// kzg10::* takes all structs in the module kzg10
 use ark_poly_commit::kzg10::*;
-//Error is enum inside error module
 use ark_poly_commit::error::Error;
 use ark_poly::polynomial::Polynomial;
-// DenseUVPolynomial is a trait
 use ark_poly::DenseUVPolynomial;
-// MultilinearExtension is a trait
 use ark_poly::evaluations::multivariate::multilinear::MultilinearExtension;
-// DensePolynomial is a struct
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::univariate::SparsePolynomial;
-// DenseMultilinearExtension is a struct
 use ark_poly::evaluations::multivariate::multilinear::DenseMultilinearExtension;
-// Pairing is a trait
 use ark_ec::pairing::Pairing;
 use ark_ff::fields::Field;
-// RngCore is a trait, Zero and One are traits, start_timer and end_timer are macros
 use ark_std::{start_timer, end_timer, Zero, One, marker::PhantomData, ops::Div, ops::Mul, ops::Sub};
 use ark_std::{UniformRand};
 use ark_std::rand::{SeedableRng, RngCore};
@@ -64,7 +56,6 @@ impl<E: Pairing> SamaritanMLPCS<E>
 {
     // setup function that serves both for KZG10 univariate and Samaritan multilinear
     pub fn setup<R: RngCore>(max_vars: usize, rng: &mut R) -> Result<SamaritanMLPCS_SRS<E>, Error> {
-        // let setup_time = start_timer!(|| format!("SamaritanMLPCS::Setup with maximum variables {}", max_vars));
         let max_degree = 2usize.pow(max_vars as u32);
         let beta = E::ScalarField::rand(rng);
         let g = E::G1::rand(rng);
@@ -84,7 +75,6 @@ impl<E: Pairing> SamaritanMLPCS<E>
             powers_of_g,
             powers_of_h,
         };
-        // end_timer!(setup_time);
         Ok(pp)
     }
 
@@ -94,18 +84,14 @@ impl<E: Pairing> SamaritanMLPCS<E>
 
     // commit a univariate polynomial w.r.t G1 
     pub fn kzg10_commit_G1(srs: &SamaritanMLPCS_SRS<E>, univ_poly: &DensePolynomial<E::ScalarField>) -> Result<Commitment<E>, Error> {
-        // let kzg10_univ_commit_time = start_timer!(|| format!("SamaritanMLPCS::Univ Commit"));
         let commitment = E::G1::msm(&srs.powers_of_g[..(univ_poly.coeffs().len())], &univ_poly.coeffs()).unwrap().into_affine();
-        // end_timer!(kzg10_univ_commit_time);
         Ok(Commitment(commitment))
     }
 
     // commit a multilinear polynomial w.r.t G1, which basically performs commit to univariate polynomial after transformation
     pub fn commit_G1(srs: &SamaritanMLPCS_SRS<E>, multi_linear_poly: &DenseMultilinearExtension<E::ScalarField>) -> Result<Commitment<E>, Error> {
-        // let commit_time = start_timer!(|| format!("SamaritanMLPCS::Commit for G1 with multilinear polynomial of maximum variables {}", multi_linear_poly.num_vars));
         let univ_poly = Self::get_univariate_from_multilinear(multi_linear_poly);
         let commitment = E::G1::msm(&srs.powers_of_g[..(univ_poly.coeffs().len())], &univ_poly.coeffs()).unwrap().into_affine();
-        // end_timer!(commit_time);
         Ok(Commitment(commitment))
     }
 
@@ -183,6 +169,7 @@ impl<E: Pairing> SamaritanMLPCS<E>
         acc
     }
 
+    #[allow(non_snake_case)]
     pub(crate) fn evaluate_psi_hat_X_zy_at_delta(point: &Vec<E::ScalarField>, delta: &E::ScalarField, kappa: usize, nu: usize) -> E::ScalarField {
         let zy: Vec<_> = point[kappa..].to_vec();
         let mut acc = E::ScalarField::one();
@@ -336,7 +323,6 @@ impl<E: Pairing> SamaritanMLPCS<E>
         multi_linear_poly: &DenseMultilinearExtension<E::ScalarField>,
         point: &Vec<E::ScalarField>,
         eval: E::ScalarField,
-        // hiding_bound: Option<usize>,
         rng: &mut dyn RngCore,
     ) -> Result<SamaritanMLPCSEvalProof<E>, Error> {
         // let prover_time = start_timer!(|| format!("SamaritanMLPCS::prove with multilinear polynomial of maximum variables {}", multi_linear_poly.num_vars));
@@ -355,9 +341,9 @@ impl<E: Pairing> SamaritanMLPCS<E>
         // println!("mu: {}, kappa: {}, nu: {}, n: {}, m: {}, l: {}, max_deg: {}", mu, kappa, nu, n, m, l, max_deg);
 
         let f_hat = Self::get_univariate_from_multilinear(&multi_linear_poly);
-        // println!("f_hat: {:?}", f_hat);
-        // let mut transcript = Transcript::new(b"SamaritanMLPCS Transcript");
+
         let mut transcript = Transcript::new(b"SamaritanMLPCS Transcript");
+
         //the v_i's, where v_i = g_i(z_x) = f(z_x, <i>) for all i\in[l]
         let g_evaluation_values: Vec<_> = Self::get_evaluation_set(&multi_linear_poly, &point, kappa as usize, nu as usize);
 
@@ -367,18 +353,13 @@ impl<E: Pairing> SamaritanMLPCS<E>
         //commit to v(x)
         let v_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &v_hat).unwrap();
 
-        // println!("v_hat_commit: {:?}", v_hat_commit);
         util::append_commitment_to_transcript::<E>(&mut transcript, b"v_hat_commit", &v_hat_commit);
 
         //choosing a random field element \gamma, supposed to be verifier's choice, will edit the code to emulate RO behaviour to generate it from H(transcript till the point) 
-        // let gamma = E::ScalarField::rand(&mut rng2);
         let gamma = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"gamma");
-        // let gamma = E::ScalarField::from(2 as u64);
-        // println!("gamma in prove: {}", gamma);
 
         //compute v_gamma = v(\gamma)
         let v_gamma = v_hat.evaluate(&gamma);
-        // println!("v_gamma: {}", v_gamma);
         util::append_field_element_to_transcript::<E>(&mut transcript, b"v_gamma", &v_gamma);
 
         // divide the univariate polynomial into multiple chunks and return those chunks as vectors of univariate polynomials
@@ -399,8 +380,6 @@ impl<E: Pairing> SamaritanMLPCS<E>
         let phi_hat_X_gamma = Self::compute_phi_hat_X_gamma(&gamma, nu as usize);
 
         let alpha = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha");
-        // let alpha = E::ScalarField::from(3 as u64);
-        // println!("alpha in prove: {}", alpha);
 
         // v_psi_phi_combined = v * (psi + (alpha * phi))
         let v_psi_phi_combined = &v_hat * (&psi_hat_X_zy + (&phi_hat_X_gamma) * alpha);
@@ -408,7 +387,6 @@ impl<E: Pairing> SamaritanMLPCS<E>
         // extract necessary (l-1) terms in b_hat
         let least_coeffs = v_psi_phi_combined.coeffs()[..(l-1)].to_vec();
         let b_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(least_coeffs);
-        // println!("b_hat: {:?}", b_hat);
 
         // compute commitment to b_hat
         let b_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &b_hat).unwrap();
@@ -420,40 +398,28 @@ impl<E: Pairing> SamaritanMLPCS<E>
 
         // compute p_hat(x) * psi_hat(X;zx)
         let p_psi_combined = &p_hat * &psi_hat_X_zx;
-        // println!("p_psi_combined: {:?}", p_psi_combined);
 
         // extract necessary (m-1) number of terms in u_hat
         let selected_coeffs = p_psi_combined.coeffs()[..(m - 1)].to_vec();
         let u_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(selected_coeffs);
 
-        // println!("u_hat: {:?}", u_hat);
-        //compute commitment to u_hat
         let u_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &u_hat).unwrap();
         util::append_commitment_to_transcript::<E>(&mut transcript, b"u_hat_commit", &u_hat_commit);
 
         let beta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"beta");
-        // let beta = E::ScalarField::from(2 as u64);
-         // println!("beta in prove: {}", beta);
 
         let t_hat = Self::compute_t_hat(&v_psi_phi_combined, &b_hat, &eval, &v_gamma, &alpha, &gamma, &p_psi_combined, &u_hat, &f_hat, &p_hat, &beta, l, m);
         let t_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &t_hat).unwrap();
         util::append_commitment_to_transcript::<E>(&mut transcript, b"t_hat_commit", &t_hat_commit);
 
         let s_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); max_deg - n + 1], t_hat.coeffs().to_vec()].concat());
-        // println!("s_hat: {:?}", s_hat);
 
         let s_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &s_hat).unwrap();
         util::append_commitment_to_transcript::<E>(&mut transcript, b"s_hat_commit", &s_hat_commit);
 
         let delta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"delta");
-        // let delta = E::ScalarField::from(2 as u64);
-         // println!("delta in prove: {}", delta);
 
         let q_hat = Self::compute_q_hat(&t_hat, &v_hat, &psi_hat_X_zy, &phi_hat_X_gamma, &psi_hat_X_zx, &b_hat, &u_hat, &f_hat, &p_hat, &alpha, &beta, &gamma, &delta, &eval, &v_gamma, l, m);
-        
-        // let evaluation_at_delta = q_hat.evaluate(&delta);
-        // assert_eq!(evaluation_at_delta, E::ScalarField::zero());
-        // println!("evaluation_at_delta: {}", evaluation_at_delta);
 
         let q_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &q_hat, delta).unwrap();
         // end_timer!(prover_time);
@@ -486,30 +452,35 @@ impl<E: Pairing> SamaritanMLPCS<E>
         let max_deg: usize = n;
 
         // let verifier_time = start_timer!(|| format!("SamaritanMLPCS::verify with multilinear polynomial"));
+        
         let mut transcript = Transcript::new(b"SamaritanMLPCS Transcript");
+
         util::append_commitment_to_transcript::<E>(&mut transcript, b"v_hat_commit", &proof.v_hat_commit);
+
         let gamma = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"gamma");
-        // println!("gamma in verify: {}", gamma);
+
         util::append_field_element_to_transcript::<E>(&mut transcript, b"v_gamma", &proof.v_gamma);
         util::append_commitment_to_transcript::<E>(&mut transcript, b"p_hat_commit", &proof.p_hat_commit);
+
         let alpha = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha");
-        // println!("alpha in verify: {}", alpha);
+
         util::append_commitment_to_transcript::<E>(&mut transcript, b"b_hat_commit", &proof.b_hat_commit);
         util::append_commitment_to_transcript::<E>(&mut transcript, b"u_hat_commit", &proof.u_hat_commit);
+
         let beta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"beta");
-        // println!("beta in verify: {}", beta);
+
         util::append_commitment_to_transcript::<E>(&mut transcript, b"t_hat_commit", &proof.t_hat_commit);
         util::append_commitment_to_transcript::<E>(&mut transcript, b"s_hat_commit", &proof.s_hat_commit);
+
         let delta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"delta");
-        // println!("delta in verify: {}", delta);
 
         let psi_hat_X_zy_at_delta = Self::evaluate_psi_hat_X_zy_at_delta(&point, &delta, kappa as usize, nu as usize);
         let phi_hat_X_gamma_at_delta = Self::evaluate_phi_hat_X_gamma_at_delta(&gamma, &delta, nu as usize);
         let psi_hat_X_zx_at_delta = Self::evaluate_psi_hat_X_zx_at_delta(&point, &delta, kappa as usize, nu as usize);
 
         let q_hat_commit = Self::compute_q_hat_commit(srs.powers_of_g[0], &proof.t_hat_commit, &proof.v_hat_commit, &proof.p_hat_commit, &proof.b_hat_commit, &proof.u_hat_commit, &mlp_comm, psi_hat_X_zy_at_delta, phi_hat_X_gamma_at_delta, psi_hat_X_zx_at_delta, &alpha, &beta, &gamma, &delta, &value, &proof.v_gamma, l, m);
+        
         let passed = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &q_hat_commit, delta, E::ScalarField::zero(), &proof.q_eval_proof).unwrap();
-        // assert_eq!(passed, true);
 
         let pairing_lhs_first = E::G1Prepared::from(proof.t_hat_commit.0);
         let pairing_lhs_second = srs.powers_of_h[max_deg - n + 1];
@@ -519,7 +490,6 @@ impl<E: Pairing> SamaritanMLPCS<E>
         let pairing_rhs_second = srs.powers_of_h[0];
         let pairing_rhs_res = E::pairing(pairing_rhs_first, pairing_rhs_second);
 
-        // assert_eq!(pairing_lhs_res, pairing_rhs_res);
         let valid = (passed == true) && (pairing_lhs_res == pairing_rhs_res);
         // end_timer!(verifier_time);
         Ok(valid)
@@ -528,7 +498,7 @@ impl<E: Pairing> SamaritanMLPCS<E>
 
 #[cfg(test)]
 mod tests {
-    #![allow(non_camel_case_types)]
+    // #![allow(non_camel_case_types)]
     use ark_poly_commit::kzg10::*;
     use ark_poly_commit::*;
     use ark_ec::pairing::Pairing;
@@ -543,57 +513,31 @@ mod tests {
     // type SamaritanMLPCS_Bn254 = SamaritanMLPCS<Bn254>;
 
     #[test]
-    fn add_commitments_test() {
-        let mut rng = &mut test_rng();
-        let num_vars = 10;
-        let p = DenseMultilinearExtension::rand(num_vars, rng);
-        let f = Fr::rand(rng);
-        let mut f_p = DenseMultilinearExtension::zero();
-        f_p += (f, &p);
-
-        let srs = SamaritanMLPCS_Bls12_381::setup(num_vars, rng).unwrap();
-        // let (powers, _, _) = SamaritanMLPCS_Bls12_381::trim(&pp, false, num_vars).unwrap();
-
-        // let hiding_bound = None;
-        let comm = SamaritanMLPCS_Bls12_381::commit_G1(&srs, &p).unwrap();
-        let f_comm = SamaritanMLPCS_Bls12_381::commit_G1(&srs, &f_p).unwrap();
-        let mut f_comm_2 = Commitment::empty();
-        f_comm_2 += (f, &comm);
-
-        assert_eq!(f_comm, f_comm_2);
-    }
-
-    #[test]
     fn functionality_test() {
         let mut rng = &mut test_rng();
         let num_vars = 10;
         let mlp = DenseMultilinearExtension::rand(num_vars, rng);
-        // let evaluation_vec = [Fr::from(3 as u64), Fr::from(5 as u64), Fr::from(3 as u64), Fr::from(6 as u64), Fr::from(8 as u64), Fr::from(13 as u64), Fr::from(8 as u64), Fr::from(16 as u64)].to_vec();
-        // let mlp = DenseMultilinearExtension::from_evaluations_vec(num_vars, evaluation_vec);
-        println!("mlp: {:?}", mlp);
+        // println!("mlp: {:?}", mlp);
 
         // the setup of SamaritanMLPCS
         let srs = SamaritanMLPCS_Bls12_381::setup(num_vars, &mut rng).unwrap();
-        // let (powers, vk, powers_of_h) = SamaritanMLPCS_Bls12_381::trim(&pp, true, num_vars).unwrap();
-        // assert_eq!(powers_of_h[0], vk.h);
-
-        // the naive discrete-log version of KZG commitment (not the Pederson version)
-        // let hiding_bound = None;
 
         // the commit of SamaritanMLPCS: commit to multilinear polynomial mlp, viewed as univariate polynomial f_hat, f_hat_commit is output by it.
         let comm = SamaritanMLPCS_Bls12_381::commit_G1(&srs, &mlp).unwrap();
 
         // sampling a random point (basically mu number of field elements for mu-variate multilinear polynomial) and evaluate the polynomial at that point
         let point: Vec<_> = (0..num_vars).map(|_| Fr::rand(rng)).collect();
-        // let point: Vec<_> = [Fr::from(1 as u64), Fr::from(2 as u64), Fr::from(3 as u64)].to_vec();
+
         let eval = mlp.evaluate(&point);
-        println!("At point: {:?}, eval is: {:?}", point, eval);
+
+        // println!("At point: {:?}, eval is: {:?}", point, eval);
                 
         // run the interactive prover of SamaritanMLPCS to do a proof of evaluation to show mlp(point) = eval 
         let eval_proof = SamaritanMLPCS_Bls12_381::prove(&srs, &mlp, &point, eval, &mut rng).expect("something went wrong in proving");
 
         // run the interactive verifier of SamaritanMLPCS to verify the proof of mlp(point) = eval
         let valid = SamaritanMLPCS_Bls12_381::verify(&srs, &comm, &point, eval, &eval_proof).unwrap();
+        
         assert_eq!(valid, true);
     }
 

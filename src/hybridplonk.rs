@@ -66,12 +66,11 @@ pub struct HybridPlonkProof<E: Pairing> {
 	V_id2: E::ScalarField,
 	V_id3: E::ScalarField,
 	V_u0: E::ScalarField,
+	F_bar_commit: Commitment<E>,
+	F_bar_eval_proof: KZG10EvalProof<E>,
 	H_bar_commit: Commitment<E>,
-	H_bar_eval_proof: KZG10EvalProof<E>,
-	H_bar_bar_commit: Commitment<E>,
 	K_hat_commit: Commitment<E>,
 	K_ext_hat_commit: Commitment<E>,
-	// K_ext_tilde_commit: Commitment<E>,
 	V_y: E::ScalarField,
 	t_hat_commit: Commitment<E>,
 	eval_for_eta: E::ScalarField,
@@ -111,19 +110,10 @@ impl<E: Pairing> HybridPlonk<E> {
 		let evaluation_vec_M = [vec![E::ScalarField::one(); n], vec![E::ScalarField::zero(); n]].concat();
 		let evaluation_vec_O = vec![-E::ScalarField::one(); 2*n];
 		let evaluation_vec_C = vec![E::ScalarField::zero(); 2*n];
-		// println!("evaluation_vec_L: {:?}", evaluation_vec_L);
-		// println!("evaluation_vec_R: {:?}", evaluation_vec_R);
-		// println!("evaluation_vec_M: {:?}", evaluation_vec_M);
-		// println!("evaluation_vec_O: {:?}", evaluation_vec_O);
-		// println!("evaluation_vec_C: {:?}", evaluation_vec_C);
-
 
 		let id_1_vec = (1..=number_of_gates).map(|i| E::ScalarField::from(i as u64)).collect();
     	let id_2_vec = ((number_of_gates+1)..=(2*number_of_gates)).map(|i| E::ScalarField::from(i as u64)).collect();
     	let id_3_vec = ((2*number_of_gates+1)..=(3*number_of_gates)).map(|i| E::ScalarField::from(i as u64)).collect();
-    	// println!("id_1_vec: {:?}", id_1_vec);
-		// println!("id_2_vec: {:?}", id_2_vec);
-		// println!("id_3_vec: {:?}", id_3_vec);
 
 		let mut sigma_1_vec: Vec<_> = Vec::new();
 		let mut sigma_2_vec: Vec<_> = Vec::new();
@@ -161,10 +151,6 @@ impl<E: Pairing> HybridPlonk<E> {
 			}
 		}
 
-		// println!("sigma_1_vec: {:?}", sigma_1_vec);
-		// println!("sigma_2_vec: {:?}", sigma_2_vec);
-		// println!("sigma_3_vec: {:?}", sigma_3_vec);
-
 		let myckt = HybridPlonkCircuit::<E>{
     		log_number_of_gates,
     		number_of_wires,
@@ -192,7 +178,6 @@ impl<E: Pairing> HybridPlonk<E> {
 	(1 - tau[0])/tau[0], since bit flip position is 0 (flip 1->0). */
 
 	pub(crate) fn compute_eq_tilde(log_number_of_gates: usize, tau: &Vec<E::ScalarField>) -> DenseMultilinearExtension<E::ScalarField> {
-		// let compute_eq_tilde_time = start_timer!(|| format!("compute_eq_tilde"));
 		let number_of_gates: usize = 1 << log_number_of_gates;
 
 		let mut tau_inverses = tau.clone();
@@ -205,7 +190,7 @@ impl<E: Pairing> HybridPlonk<E> {
 		batch_inversion(&mut one_minus_tau_inverses);
 
 		let gray_code_seq: Vec<_> = (0..number_of_gates).map(|i| i ^ (i >> 1)).collect();
-		// println!("gray_code_seq: {:?}", gray_code_seq);
+
 		let mut first = E::ScalarField::one();
 		for i in 0..log_number_of_gates {
 			first *= E::ScalarField::one() - tau[i];
@@ -214,7 +199,6 @@ impl<E: Pairing> HybridPlonk<E> {
 		let mut bit_seq: Vec<i8> = vec![0; log_number_of_gates];
 		for i in 1..number_of_gates {
 			let flip_pos: usize = (((gray_code_seq[i] as i32) - (gray_code_seq[i-1] as i32)).abs().ilog2()).try_into().unwrap();
-			// println!("i: {}, flip_pos: {}", i, flip_pos);
 			if bit_seq[flip_pos] == 0 {
 				first *= tau[flip_pos] * one_minus_tau_inverses[flip_pos];
 				evals[gray_code_seq[i]] = first;
@@ -226,18 +210,15 @@ impl<E: Pairing> HybridPlonk<E> {
 				bit_seq[flip_pos] = 0;
 			}
 		}
-		// end_timer!(compute_eq_tilde_time);
 		DenseMultilinearExtension::<E::ScalarField>::from_evaluations_vec(log_number_of_gates, evals)
 	}
 
 	/* This function directly returns evaluation of eq_tilde at a point eval_point, without looking at individual hypercube evaluations of eq_tilde. Runtime is O(log(n)). */
 	pub(crate) fn evaluate_eq_tilde_at_point(log_number_of_gates: usize, tau: &Vec<E::ScalarField>, eval_point: &Vec<E::ScalarField>) -> E::ScalarField {
-		// let evaluate_eq_tilde_at_point_time = start_timer!(|| format!("evaluate_e_hat_at_point"));
 		let mut res = E::ScalarField::one();
 		for i in 0..log_number_of_gates {
 			res = res * (tau[i] * eval_point[i] + (E::ScalarField::one() - tau[i]) * (E::ScalarField::one() - eval_point[i]));
 		}
-		// end_timer!(evaluate_eq_tilde_at_point_time);
 		res
 	}
 
@@ -264,7 +245,6 @@ impl<E: Pairing> HybridPlonk<E> {
 
 	/* v_vec contains elements of v0 at even positions and elements of v1 in odd positions. First half of v_vec is u0 and second half is u1. */ 
 	pub(crate) fn compute_v_1_u_0_u_1_tilde(log_number_of_gates: usize, v_0: &DenseMultilinearExtension<E::ScalarField>) -> (DenseMultilinearExtension<E::ScalarField>, DenseMultilinearExtension<E::ScalarField>, DenseMultilinearExtension<E::ScalarField>) {
-		// let compute_v_1_u_0_u_1_tilde_time = start_timer!(|| format!("compute_v_1_u_0_u_1_tilde"));
 		let number_of_gates = 1 << log_number_of_gates;
 		let v_0_vec = v_0.to_evaluations();
 		let mut v_vec = vec![E::ScalarField::one(); 2 * number_of_gates];
@@ -285,8 +265,6 @@ impl<E: Pairing> HybridPlonk<E> {
 		let u_0_vec = v_vec[..number_of_gates].to_vec();
 		let u_1_vec = v_vec[number_of_gates..].to_vec();
 
-		// end_timer!(compute_v_1_u_0_u_1_tilde_time);
-
 		(DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, v_1_vec), 
 			DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, u_0_vec), 
 				DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, u_1_vec))
@@ -300,7 +278,6 @@ impl<E: Pairing> HybridPlonk<E> {
 			 sigma_1_copy, sigma_2_copy, sigma_3_copy, 
 			 id_1_copy, id_2_copy, id_3_copy, 
 			 v_0_tilde_copy, v_1_tilde_copy, u_0_tilde_copy, u_1_tilde_copy} */
-		// let compute_univariate_r_X_evaluation_time = start_timer!(|| format!("compute_univariate_r_X_evaluation"));
 		let mut tmp : Vec<_> = Vec::new();
 		let mut i = 0;
 		for mlp in mlp_set.iter_mut() {
@@ -314,25 +291,23 @@ impl<E: Pairing> HybridPlonk<E> {
 						+ xi * ((tmp[15][i] * (tmp[1][i] + beta * tmp[9][i] + gamma) * (tmp[2][i] + beta * tmp[10][i] + gamma) * (tmp[3][i] + beta * tmp[11][i] + gamma)) - ((tmp[1][i] + beta * tmp[12][i] + gamma) * (tmp[2][i] + beta * tmp[13][i] + gamma) * (tmp[3][i] + beta * tmp[14][i] + gamma))) 
 						+ xi * xi * (tmp[16][i] - (tmp[17][i] * tmp[18][i]))); 
 		}
-		// end_timer!(compute_univariate_r_X_evaluation_time);
 		res.iter().sum()
 	}
 	/* Given (d+1) points for a d-degree univariate polynomial, this function computes its evaluation at some other point. */
 	pub(crate) fn compute_evaluation_through_lagrange_interpolation(d_plus_one_evaluation_points: &Vec<E::ScalarField>, d_plus_one_evaluations: &Vec<E::ScalarField>, alpha: E::ScalarField) -> E::ScalarField {
-		// assert_eq!(d_plus_one_evaluation_points.len(), d_plus_one_evaluations.len());
-		// let compute_evaluation_through_lagrange_interpolation_time = start_timer!(|| format!("compute_evaluation_through_lagrange_interpolation"));
 		let num_points = d_plus_one_evaluation_points.len();
 		let mut eval = E::ScalarField::zero();
 		for i in 0..num_points {
 			let mut prod_term = d_plus_one_evaluations[i];
+			let mut denom = E::ScalarField::one();
 			for j in 0..num_points {
 				if i != j {
-					prod_term *= (alpha - d_plus_one_evaluation_points[j]) * ((d_plus_one_evaluation_points[i] - d_plus_one_evaluation_points[j]).inverse().unwrap());
+					prod_term *= alpha - d_plus_one_evaluation_points[j]; 
+					denom *= d_plus_one_evaluation_points[i] - d_plus_one_evaluation_points[j];
 				}
 			}
-			eval += prod_term;
+			eval += prod_term * denom.inverse().unwrap();
 		}
-		// end_timer!(compute_evaluation_through_lagrange_interpolation_time);
 		eval
 	}
 
@@ -343,62 +318,50 @@ impl<E: Pairing> HybridPlonk<E> {
 			 sigma_1_copy, sigma_2_copy, sigma_3_copy, 
 			 id_1_copy, id_2_copy, id_3_copy, 
 			 v_0_tilde_copy, v_1_tilde_copy, u_0_tilde_copy, u_1_tilde_copy} */
-		// let compute_G_bar_from_O_bar_set_time = start_timer!(|| format!("compute_G_bar_from_O_bar_set"));
 		let gamma_poly = DensePolynomial::<E::ScalarField>::from_coefficients_vec(vec![gamma]);
 		let res = &O_bar_set[0] * ((&O_bar_set[1] * &O_bar_set[2] * &O_bar_set[4]) + (&O_bar_set[1] * &O_bar_set[5]) + (&O_bar_set[2] * &O_bar_set[6]) + (&O_bar_set[3] * &O_bar_set[7]) + &O_bar_set[8]
 				+ (&O_bar_set[15] * (&O_bar_set[1] + &O_bar_set[9] * beta + &gamma_poly) * (&O_bar_set[2] + &O_bar_set[10] * beta + &gamma_poly) * (&O_bar_set[3] + &O_bar_set[11] * beta + &gamma_poly) - (&O_bar_set[1] + &O_bar_set[12] *beta + &gamma_poly) * (&O_bar_set[2] + &O_bar_set[13] *beta + &gamma_poly) * (&O_bar_set[3] + &O_bar_set[14] * beta + &gamma_poly)) * xi
 				+ (&O_bar_set[16] - &(&O_bar_set[17] * &O_bar_set[18])) * xi * xi);
-		// end_timer!(compute_G_bar_from_O_bar_set_time);
 		res 
 	}
 
-	pub(crate) fn compute_G_prime(O_bar_set: &Vec<DensePolynomial<E::ScalarField>>, g_hat: &DensePolynomial<E::ScalarField>, h_hat: &DensePolynomial<E::ScalarField>, rem_const: E::ScalarField, xi: E::ScalarField, beta: E::ScalarField, gamma: E::ScalarField, z: E::ScalarField, m: usize, V_eq: E::ScalarField, V_w1: E::ScalarField, V_w2: E::ScalarField, V_w3: E::ScalarField, V_sigma1: E::ScalarField, V_sigma2: E::ScalarField, V_sigma3: E::ScalarField, V_id1: E::ScalarField, V_id2: E::ScalarField, V_id3: E::ScalarField, V_u0: E::ScalarField) -> DensePolynomial<E::ScalarField> {
-		// let compute_G_prime_time = start_timer!(|| format!("compute_G_prime"));
+	pub(crate) fn compute_G_prime(O_bar_set: &Vec<DensePolynomial<E::ScalarField>>, g_hat: &DensePolynomial<E::ScalarField>, h_hat: &DensePolynomial<E::ScalarField>, xi: E::ScalarField, beta: E::ScalarField, gamma: E::ScalarField, z: E::ScalarField, m: usize, V_eq: E::ScalarField, V_w1: E::ScalarField, V_w2: E::ScalarField, V_w3: E::ScalarField, V_sigma1: E::ScalarField, V_sigma2: E::ScalarField, V_sigma3: E::ScalarField, V_id1: E::ScalarField, V_id2: E::ScalarField, V_id3: E::ScalarField, V_u0: E::ScalarField) -> DensePolynomial<E::ScalarField> {
 		let res = (&O_bar_set[4] * V_w1 * V_w2 + &O_bar_set[5] * V_w1 + &O_bar_set[6] * V_w2 + &O_bar_set[7] * V_w3 + &O_bar_set[8] 
 			+ (&O_bar_set[15] * (V_w1 + beta * V_sigma1 + gamma) * (V_w2 + beta * V_sigma2 + gamma) * (V_w3 + beta * V_sigma3 + gamma) - DensePolynomial::<E::ScalarField>::from_coefficients_vec(vec![(V_w1 + beta * V_id1 + gamma) * (V_w2 + beta * V_id2 + gamma) * (V_w3 + beta * V_id3 + gamma)])) * xi
-			+ (&O_bar_set[16] - &O_bar_set[18] * V_u0) * xi * xi) * V_eq - g_hat * (z.pow(&[m as u64]) - E::ScalarField::from(1 as u64)) - h_hat * z - DensePolynomial::<E::ScalarField>::from_coefficients_vec(vec![rem_const]);
-		// assert_eq!(res.evaluate(&z), E::ScalarField::zero());
-		// end_timer!(compute_G_prime_time);
+			+ (&O_bar_set[16] - &O_bar_set[18] * V_u0) * xi * xi) * V_eq - g_hat * (z.pow(&[m as u64]) - E::ScalarField::from(1 as u64)) - h_hat * z;
 		res
 	}
 
-	pub(crate) fn compute_H_bar(O_bar_set: &Vec<DensePolynomial<E::ScalarField>>, G_prime: &DensePolynomial<E::ScalarField>, alpha_powers: &Vec<E::ScalarField>) -> DensePolynomial<E::ScalarField> {
-		// let compute_H_bar_time = start_timer!(|| format!("compute_H_bar"));
-		let H_bar = G_prime + &O_bar_set[0] * alpha_powers[0] + &O_bar_set[1] * alpha_powers[1] + &O_bar_set[2] * alpha_powers[2] + &O_bar_set[3] * alpha_powers[3] 
+	pub(crate) fn compute_F_bar(O_bar_set: &Vec<DensePolynomial<E::ScalarField>>, G_prime: &DensePolynomial<E::ScalarField>, alpha_powers: &Vec<E::ScalarField>) -> DensePolynomial<E::ScalarField> {
+		let F_bar = G_prime + &O_bar_set[0] * alpha_powers[0] + &O_bar_set[1] * alpha_powers[1] + &O_bar_set[2] * alpha_powers[2] + &O_bar_set[3] * alpha_powers[3] 
 						+ &O_bar_set[9] * alpha_powers[4] + &O_bar_set[10] * alpha_powers[5] + &O_bar_set[11] * alpha_powers[6]
 						+ &O_bar_set[12] * alpha_powers[7] + &O_bar_set[13] * alpha_powers[8] + &O_bar_set[14] * alpha_powers[9]
 						+ &O_bar_set[17] * alpha_powers[10];
-		// end_timer!(compute_H_bar_time);
+		F_bar
+	}
+
+	pub(crate) fn compute_H_bar(O_bar_set: &Vec<DensePolynomial<E::ScalarField>>, a_vec: &Vec<E::ScalarField>) -> DensePolynomial<E::ScalarField> {
+		let mut H_bar = DensePolynomial::<E::ScalarField>::zero();
+		let mut iter = 0;
+		for O_bar in O_bar_set {
+			H_bar = H_bar + O_bar * a_vec[iter];
+			iter = iter + 1;
+		}
 		H_bar
 	}
 
-	pub(crate) fn compute_H_bar_bar(O_bar_set: &Vec<DensePolynomial<E::ScalarField>>, a_vec: &Vec<E::ScalarField>) -> DensePolynomial<E::ScalarField> {
-		// let compute_H_bar_bar_time = start_timer!(|| format!("compute_H_bar_bar"));
-		let mut H_bar_bar = DensePolynomial::<E::ScalarField>::zero();
-		let mut iter = 0;
-		for O_bar in O_bar_set {
-			H_bar_bar = H_bar_bar + O_bar * a_vec[iter];
-			iter = iter + 1;
-		}
-		// end_timer!(compute_H_bar_bar_time);
-		H_bar_bar
-	}
-
 	pub(crate) fn compute_K_hat(O_tilde_set: &Vec<&mut DenseMultilinearExtension<E::ScalarField>>, a_vec: &Vec<E::ScalarField>) -> DensePolynomial<E::ScalarField> {
-		// let compute_K_hat_time = start_timer!(|| format!("compute_K_hat"));
 		let mut K_hat = DensePolynomial::<E::ScalarField>::zero();
 	    let mut iter = 0;
 	    for O_tilde in O_tilde_set {
 	    	K_hat = K_hat + (DensePolynomial::<E::ScalarField>::from_coefficients_vec(O_tilde.to_evaluations()) * a_vec[iter]);
 	    	iter = iter + 1;
 	    }
-	    // end_timer!(compute_K_hat_time);
 	    K_hat
 	}
 
 	// Following function is computed by the Prover: O(mlog(m)) = O(n)
 	pub(crate) fn compute_e_hat_coeffs(kappa: usize, y: &Vec<E::ScalarField>) -> Vec<E::ScalarField> {
-		// let compute_e_hat_coeffs_time = start_timer!(|| format!("compute_e_hat_coeffs"));
 		let m = 1 << kappa;
 		let mut e_hat_coeffs : Vec<_> = Vec::new();
 		for i in 0..m {
@@ -413,36 +376,30 @@ impl<E: Pairing> HybridPlonk<E> {
 			}
 			e_hat_coeffs.push(term);
 		}
-		// end_timer!(compute_e_hat_coeffs_time);
 		e_hat_coeffs
 	}
 
 	// Following function is computed by the Verifier: O(log(m))
 	pub(crate) fn evaluate_e_hat_at_point(kappa: usize, y: &Vec<E::ScalarField>, point: &E::ScalarField) -> E::ScalarField {
-		// let evaluate_e_hat_at_point_time = start_timer!(|| format!("evaluate_e_hat_at_point"));
 		let mut res = E::ScalarField::one();
 		let mut point_pow = *point;
 		for i in 0..kappa {
 			res = res * (y[i] * point_pow + (E::ScalarField::one() - y[i]));
 			point_pow = point_pow * point_pow;
 		}
-		// end_timer!(evaluate_e_hat_at_point_time);
 		res
 	}
 
 	// t_hat = fft(e_hat)
 	pub(crate) fn compute_t_hat(m: usize, e_hat_coeffs: &Vec<E::ScalarField>) -> DensePolynomial<E::ScalarField> {
-		// let compute_t_hat_time = start_timer!(|| format!("compute_t_hat"));
 		let domain = Radix2EvaluationDomain::<E::ScalarField>::new(m).unwrap();
 		let t_coeffs_vec = domain.fft(&e_hat_coeffs);
 		let t_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(t_coeffs_vec);
-		// end_timer!(compute_t_hat_time);
 		t_hat
 	}
 
 	// A_hat_coeffs[i] = 1/(eta*omega_pow_i - 1). So first perform fft on polynomial (eta * X - 1) to get the inverse of the actual A_hat coefficients, and then perform inverse of each element in the vector
 	pub(crate) fn compute_A_hat(eta: E::ScalarField, m: usize) -> DensePolynomial<E::ScalarField> {
-		// let compute_A_hat_time = start_timer!(|| format!("compute_A_hat"));
 		let domain = Radix2EvaluationDomain::<E::ScalarField>::new(m).unwrap();
 		let eta_x_minus_one_coeffs = vec![-E::ScalarField::one(), eta];
 		let A_hat_evals_at_roots_of_unity_inv = domain.fft(&eta_x_minus_one_coeffs);
@@ -452,23 +409,19 @@ impl<E: Pairing> HybridPlonk<E> {
 			A_hat_coeffs.push(A_hat_evals_at_roots_of_unity_inv[i].inverse().unwrap());
 		}
 		let A_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(A_hat_coeffs);
-		// end_timer!(compute_A_hat_time);
 		A_hat
 	}
 
 	pub(crate) fn compute_B_hat_delta_coeffs(A_hat: &DensePolynomial<E::ScalarField>, delta: E::ScalarField, m: usize) -> Vec<E::ScalarField> {
-		// let compute_B_hat_delta_coeffs_time = start_timer!(|| format!("compute_B_hat_delta_coeffs"));
 		let mut B_hat_delta_coeffs : Vec<_> = Vec::new();
 		let A_hat_coeffs = A_hat.coeffs().to_vec();
 		for i in 0..m {
 			B_hat_delta_coeffs.push(A_hat_coeffs[i].inverse().unwrap() * delta.pow(&[i as u64]));
 		}
-		// end_timer!(compute_B_hat_delta_coeffs_time);
 		B_hat_delta_coeffs
 	}
 
 	pub(crate) fn evaluate_B_hat_at_point(eta: &E::ScalarField, point: &E::ScalarField, kappa: usize) -> E::ScalarField {
-		// let evaluate_B_hat_at_point_time = start_timer!(|| format!("evaluate_B_hat_at_point"));
 		let mut Psi = E::ScalarField::one();
 		let m = 1 << kappa;
 		let mth_root_of_unity = E::ScalarField::get_root_of_unity(m.try_into().unwrap()).unwrap();
@@ -479,18 +432,15 @@ impl<E: Pairing> HybridPlonk<E> {
 			omega_pow = omega_pow * omega_pow;
 			point_pow = point_pow * point_pow;
 		}
-		// assert_eq!(point_pow, point.pow(&[m as u64]));
 		let res = Psi * eta - (point_pow - E::ScalarField::one()) * (*point - E::ScalarField::one()).inverse().unwrap();
-		// end_timer!(evaluate_B_hat_at_point_time);
 		res
 	}
 
-	pub(crate) fn compute_S_hat(V_y: E::ScalarField, eval_for_eta: E::ScalarField, eval_for_delta: E::ScalarField, H_bar_bar: &DensePolynomial<E::ScalarField>, t_hat: &DensePolynomial<E::ScalarField>, A_hat: &DensePolynomial<E::ScalarField>, e_hat_coeffs: &Vec<E::ScalarField>, B_hat_delta_coeffs: &Vec<E::ScalarField>, epsilon: E::ScalarField, m: usize) -> DensePolynomial<E::ScalarField> {
-		// let compute_S_hat_time = start_timer!(|| format!("compute_S_hat"));
+	pub(crate) fn compute_S_hat(V_y: E::ScalarField, eval_for_eta: E::ScalarField, eval_for_delta: E::ScalarField, H_bar: &DensePolynomial<E::ScalarField>, t_hat: &DensePolynomial<E::ScalarField>, A_hat: &DensePolynomial<E::ScalarField>, e_hat_coeffs: &Vec<E::ScalarField>, B_hat_delta_coeffs: &Vec<E::ScalarField>, epsilon: E::ScalarField, m: usize) -> DensePolynomial<E::ScalarField> {
 		let domain = Radix2EvaluationDomain::<E::ScalarField>::new(2*m).unwrap();
 
-		let H_bar_bar_evals_at_roots_of_unity = domain.fft(&H_bar_bar);
-		let H_bar_bar_rev_evals_at_roots_of_unity = domain.fft(&H_bar_bar.iter().rev().cloned().collect::<Vec<_>>());
+		let H_bar_evals_at_roots_of_unity = domain.fft(&H_bar);
+		let H_bar_rev_evals_at_roots_of_unity = domain.fft(&H_bar.iter().rev().cloned().collect::<Vec<_>>());
 
 		let t_hat_evals_at_roots_of_unity = domain.fft(&t_hat);
 		let t_hat_rev_evals_at_roots_of_unity = domain.fft(&t_hat.iter().rev().cloned().collect::<Vec<_>>());
@@ -507,7 +457,7 @@ impl<E: Pairing> HybridPlonk<E> {
 		let mut lhs_evals_at_roots_of_unity : Vec<_> = Vec::new();
 		for i in 0..(2*m) {
 			lhs_evals_at_roots_of_unity.push(
-				(H_bar_bar_evals_at_roots_of_unity[i] * t_hat_rev_evals_at_roots_of_unity[i] + H_bar_bar_rev_evals_at_roots_of_unity[i] * t_hat_evals_at_roots_of_unity[i])
+				(H_bar_evals_at_roots_of_unity[i] * t_hat_rev_evals_at_roots_of_unity[i] + H_bar_rev_evals_at_roots_of_unity[i] * t_hat_evals_at_roots_of_unity[i])
 				+ epsilon * (A_hat_evals_at_roots_of_unity[i] * e_hat_rev_evals_at_roots_of_unity[i] + A_hat_rev_evals_at_roots_of_unity[i] * e_hat_evals_at_roots_of_unity[i])
 				+ epsilon * epsilon * (A_hat_evals_at_roots_of_unity[i] * B_hat_rev_evals_at_roots_of_unity[i] + A_hat_rev_evals_at_roots_of_unity[i] * B_hat_evals_at_roots_of_unity[i]));
 		}
@@ -515,16 +465,13 @@ impl<E: Pairing> HybridPlonk<E> {
 		let lhs_coeffs = domain.ifft(&lhs_evals_at_roots_of_unity);
 
 		let S_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(lhs_coeffs[m..(2*m)-1].to_vec());
-		// end_timer!(compute_S_hat_time);
 		S_hat
 	}
 
 	pub(crate) fn compute_d_hat(u0_hat: &DensePolynomial<E::ScalarField>, u1_hat: &DensePolynomial<E::ScalarField>, v0_hat: &DensePolynomial<E::ScalarField>, v1_hat: &DensePolynomial<E::ScalarField>, K_hat: &DensePolynomial<E::ScalarField>, h_hat: &DensePolynomial<E::ScalarField>, epsilon: E::ScalarField, n: usize, m: usize) -> DensePolynomial<E::ScalarField> {
-		// let compute_d_hat_time = start_timer!(|| format!("compute_d_hat"));
 		let d_hat = u0_hat + u1_hat * epsilon + v0_hat * epsilon.pow(&[2 as u64]) + v1_hat * epsilon.pow(&[3 as u64]) 
 			+ &DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); n - m], K_hat.coeffs().to_vec()].concat().to_vec()) * epsilon.pow(&[4 as u64])
 			+ &DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); n - m + 1], h_hat.coeffs().to_vec()].concat().to_vec()) * epsilon.pow(&[5 as u64]);
-		// end_timer!(compute_d_hat_time);
 		d_hat
 	}
 
@@ -535,17 +482,15 @@ impl<E: Pairing> HybridPlonk<E> {
 		let number_of_gates = 1 << log_number_of_gates;
 		let number_of_wires = ckt.number_of_wires;
 		let number_of_initial_rounds = (log_number_of_gates as f64).log2().ceil() as usize;
-		//let number_of_initial_rounds = 7;
+		// let number_of_initial_rounds = 5;
 		let seed = [21u8; 32];
 		let mut rng = StdRng::from_seed(seed);
 		
 		let mut transcript = Transcript::new(b"HybridPlonk Transcript");
 
-		// let w1w2w3_commit_time = start_timer!(|| format!("w1w2w3 multilinear commit"));
 		let w1_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &w1_tilde).unwrap();
 		let w2_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &w2_tilde).unwrap();
 		let w3_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &w3_tilde).unwrap();
-		// end_timer!(w1w2w3_commit_time);
 
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"w1_tilde_commit", &w1_tilde_commit);
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"w2_tilde_commit", &w2_tilde_commit);
@@ -554,25 +499,17 @@ impl<E: Pairing> HybridPlonk<E> {
 		let beta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"beta");
 		let gamma = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"gamma");
 		
-		// let v0_compute_time = start_timer!(|| format!("v0 compute"));
 		let v_0_tilde = Self::compute_v_0_tilde(log_number_of_gates, &ckt.sigma_1, &ckt.sigma_2, &ckt.sigma_3, &ckt.id_1, &ckt.id_2, &ckt.id_3, &w1_tilde, &w2_tilde, &w3_tilde, beta, gamma);
-		// end_timer!(v0_compute_time);
 
-		// let v0_commit_time = start_timer!(|| format!("v0 multilinear commit"));
 		let v_0_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &v_0_tilde).unwrap();
-		// end_timer!(v0_commit_time);
 
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"v_0_tilde_commit", &v_0_tilde_commit);
 
-		// let v1u0u1_compute_time = start_timer!(|| format!("v1u0u1 compute"));
 		let (v_1_tilde, u_0_tilde, u_1_tilde) = Self::compute_v_1_u_0_u_1_tilde(log_number_of_gates, &v_0_tilde);
-		// end_timer!(v1u0u1_compute_time);
 		
-		// let v1u0u1_commit_time = start_timer!(|| format!("v1u0u1 multilinear commit"));
 		let v_1_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &v_1_tilde).unwrap();
 		let u_0_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &u_0_tilde).unwrap();
 		let u_1_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &u_1_tilde).unwrap();
-		// end_timer!(v1u0u1_commit_time);
 
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"v_1_tilde_commit", &v_1_tilde_commit);
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"u_0_tilde_commit", &u_0_tilde_commit);
@@ -581,11 +518,8 @@ impl<E: Pairing> HybridPlonk<E> {
 		let xi = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"xi");
 		let tau = util::sample_random_challenge_vector_from_transcript::<E>(&mut transcript, b"tau", log_number_of_gates);
 
-		// let eq_tilde_compute_time = start_timer!(|| format!("eq_tilde compute"));
 		let mut eq_tilde = Self::compute_eq_tilde(log_number_of_gates, &tau);
-		// end_timer!(eq_tilde_compute_time);
 
-		// let clone_time = start_timer!(|| format!("mlps clone"));
 		let mut eq_tilde_copy = eq_tilde.clone();
 		let mut w1_tilde_copy = w1_tilde.clone();
 		let mut w2_tilde_copy = w2_tilde.clone();
@@ -605,7 +539,6 @@ impl<E: Pairing> HybridPlonk<E> {
 		let mut v_1_tilde_copy = v_1_tilde.clone();
 		let mut u_0_tilde_copy = u_0_tilde.clone();
 		let mut u_1_tilde_copy = u_1_tilde.clone();
-		// end_timer!(clone_time);
 
 		let mut mlp_set = vec![&mut eq_tilde_copy, &mut w1_tilde_copy, &mut w2_tilde_copy, &mut w3_tilde_copy, 
 			 &mut qM_copy, &mut qL_copy, &mut qR_copy, &mut qO_copy, &mut qC_copy, 
@@ -616,9 +549,9 @@ impl<E: Pairing> HybridPlonk<E> {
 		let mut coeffs: Vec<_> = Vec::new();
 		let mut alphas: Vec<_> = Vec::new();
 
-		// let multivariate_sum_check_time = start_timer!(|| format!("multivariate sum check with number_of_initial_rounds: {}", number_of_initial_rounds));
 		for i in 0..number_of_initial_rounds {
-			let d_plus_one_evaluation_points = util::sample_random_challenge_vector_from_transcript::<E>(&mut transcript, b"d_plus_one_evaluation_points", 6);
+		    // we use 1,2,..,5 as the evaluation points, then at verifier end evaluation at zero is determined by subtracting evaluation at one from previous round evaluation 
+			let d_plus_one_evaluation_points = (1..=5).map(|x| E::ScalarField::from(x as u64)).collect::<Vec<_>>();
 			if i > 0 {
 				let alpha = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha");
 				// println!("prove::alpha: {}", alpha);
@@ -635,12 +568,10 @@ impl<E: Pairing> HybridPlonk<E> {
 			coeffs.push(d_plus_one_evaluations);
 		}
 		let alpha_nu = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha_nu");
-		// println!("prove::alpha_nu: {}", alpha_nu);
 		for mlp in mlp_set.iter_mut() {
 			**mlp = (*mlp).fix_variables(&[alpha_nu]);
 		}
 		alphas.push(alpha_nu);
-		// end_timer!(multivariate_sum_check_time);
 
 		// the initial rounds of conventional (hyperplonk-like) multivariate sumcheck is done till this point
 
@@ -649,20 +580,17 @@ impl<E: Pairing> HybridPlonk<E> {
 		for mlp in mlp_set {
 			O_tilde_set.push(mlp);
 		}
-		// println!("O_tilde_set: {:?}", O_tilde_set);
+
 		let kappa = log_number_of_gates - number_of_initial_rounds;
 		let m = (1 << kappa) as usize;
 
 	    // O_bar_set is the set containing inverse ffts of several univariate polynomials which correspond to the multilinear polynomials in O_tilde_set
 
-	    // let O_bar_set_compute_time = start_timer!(|| format!("O_bar_set compute with {} ifft operations", O_tilde_set.len()));
 	    let domain = Radix2EvaluationDomain::<E::ScalarField>::new(m).unwrap();
 	    let mut O_bar_set : Vec<_> = Vec::new();
 	    for O_tilde in &O_tilde_set {
 	    	O_bar_set.push(DensePolynomial::<E::ScalarField>::from_coefficients_vec(domain.ifft(&O_tilde.to_evaluations())));
 	    }
-	    // end_timer!(O_bar_set_compute_time);
-	    // println!("O_bar_set: {:?}", O_bar_set);
 
 	    /* Here, G_bar = eq_bar * (
 	    					(qM_bar * w1_bar * w2_bar + qL_bar * w1_bar + qR_bar * w2_bar + qO_bar * w3_bar + qC_bar) + 
@@ -670,13 +598,9 @@ impl<E: Pairing> HybridPlonk<E> {
 	    					xi^2 * (v1_bar - u0_bar * u1_bar)).
 	    		Each of the (m-1)-deg univariate polynomial in the expression is contained in O_bar_set. */
 
-	    // let G_bar_compute_time = start_timer!(|| format!("G_bar compute"));
 	    let G_bar = Self::compute_G_bar_from_O_bar_set(&O_bar_set, beta, gamma, xi);
-	    // end_timer!(G_bar_compute_time);
-	    // println!("G_bar: {:?}", G_bar);
 
 	    /* divisor = (X^m - 1), schoolbook division, with only two coefficients getting affected in each iteration.*/
-	    // let g_hat_h_hat_compute_time = start_timer!(|| format!("g_hat_h_hat compute"));
 	    let mut G_bar_coeffs = (&G_bar).coeffs.clone();
 	    let mut g_hat_coeffs: Vec<_> = Vec::new();
         for i in (m..G_bar_coeffs.len()).rev() {
@@ -688,20 +612,15 @@ impl<E: Pairing> HybridPlonk<E> {
         let rem_const = G_bar_coeffs[0];
         let h_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(G_bar_coeffs[1..].to_vec());
         let g_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(g_hat_coeffs.iter().rev().cloned().collect::<Vec<_>>());
-	    // end_timer!(g_hat_h_hat_compute_time);
 
-	    // let g_hat_h_hat_commit_time = start_timer!(|| format!("g_hat_h_hat univariate commit"));
 	    let g_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &g_hat).unwrap();
 	    let h_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &h_hat).unwrap();
-	    // end_timer!(g_hat_h_hat_commit_time);
 
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"g_hat_commit", &g_hat_commit);
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"h_hat_commit", &h_hat_commit);
 
 	    let z = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"z");
-	    // println!("z in prove: {}", z);
 
-	    // let univariates_evaluation_time = start_timer!(|| format!("univariates evaluations at z for G_prime computation"));
 	    let V_eq = O_bar_set[0].evaluate(&z);
 	    let V_w1 = O_bar_set[1].evaluate(&z);
 	    let V_w2 = O_bar_set[2].evaluate(&z);
@@ -713,71 +632,43 @@ impl<E: Pairing> HybridPlonk<E> {
 	    let V_id2 = O_bar_set[13].evaluate(&z);
 	    let V_id3 = O_bar_set[14].evaluate(&z);
 	    let V_u0 = O_bar_set[17].evaluate(&z);
-	    // end_timer!(univariates_evaluation_time);
 
-	    let G_prime = Self::compute_G_prime(&O_bar_set, &g_hat, &h_hat, rem_const, xi, beta, gamma, z, m, V_eq, V_w1, V_w2, V_w3, V_sigma1, V_sigma2, V_sigma3, V_id1, V_id2, V_id3, V_u0);
-	    // println!("G_prime: {:?}", G_prime);
+	    let G_prime = Self::compute_G_prime(&O_bar_set, &g_hat, &h_hat, xi, beta, gamma, z, m, V_eq, V_w1, V_w2, V_w3, V_sigma1, V_sigma2, V_sigma3, V_id1, V_id2, V_id3, V_u0);
 
 	    let alpha_ = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha_");
-	    // let alpha__powers_compute_time = start_timer!(|| format!("powers of alpha_ compute"));
 	    let mut alpha_powers : Vec<E::ScalarField> = Vec::new();
 	    let mut cur = alpha_;
 	    for i in 0..11 {
 	    	alpha_powers.push(cur);
 	    	cur = cur * alpha_;
 	    }
-	    // end_timer!(alpha__powers_compute_time);
-	    // println!("alpha_powers: {:?}", alpha_powers);
 
-	    // let H_bar_compute_time = start_timer!(|| format!("H_bar compute from O_bar_set and G_prime"));
-	    let H_bar = Self::compute_H_bar(&O_bar_set, &G_prime, &alpha_powers);
-	    // end_timer!(H_bar_compute_time);
-	    // println!("H_bar: {:?}", H_bar);
-	    // let V = V_eq * alpha_powers[0] + V_w1 * alpha_powers[1] + V_w2 * alpha_powers[2] + V_w3 * alpha_powers[3]
-	    // 		+ V_sigma1 * alpha_powers[4] + V_sigma2 * alpha_powers[5] + V_sigma3 * alpha_powers[6]
-	    // 		+ V_id1 * alpha_powers[7] + V_id2 * alpha_powers[8] + V_id3 * alpha_powers[9]
-	    // 		+ V_u0 * alpha_powers[10];
-	    // assert_eq!(H_bar.evaluate(&z), V);
+	    let F_bar = Self::compute_F_bar(&O_bar_set, &G_prime, &alpha_powers);
 
-	    // let H_bar_commit_time = start_timer!(|| format!("H_bar univariate commit"));
-	    let H_bar_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &H_bar).unwrap();
-	    // end_timer!(H_bar_commit_time);
-	    util::append_commitment_to_transcript::<E>(&mut transcript, b"H_bar_commit", &H_bar_commit);
+	    let F_bar_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &F_bar).unwrap();
+	    util::append_commitment_to_transcript::<E>(&mut transcript, b"F_bar_commit", &F_bar_commit);
 
-	    // let H_bar_at_z_eval_prove_time = start_timer!(|| format!("H_bar at z eval prove"));
-	    let H_bar_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &H_bar, z).unwrap();
-	    // end_timer!(H_bar_at_z_eval_prove_time);
+	    let F_bar_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &F_bar, z).unwrap();
 
 	    let a_vec = vec![alpha_powers[0], alpha_powers[1], alpha_powers[2], alpha_powers[3], V_eq * V_w1 * V_w2, V_eq * V_w1, V_eq * V_w2, V_eq * V_w3, V_eq,
 	    					alpha_powers[4], alpha_powers[5], alpha_powers[6], alpha_powers[7], alpha_powers[8], alpha_powers[9], 
 	    					V_eq * xi * (V_w1 + beta * V_sigma1 + gamma) * (V_w2 + beta * V_sigma2 + gamma) * (V_w3 + beta * V_sigma3 + gamma), V_eq * xi * xi,
 	    					alpha_powers[10], - (V_eq * xi * xi * V_u0)];
 
-	    // H_bar_bar is "a_vec"-linear combination of the (m-1)-degree univariate polynomials in O_bar_set.
+	    // H_bar is "a_vec"-linear combination of the (m-1)-degree univariate polynomials in O_bar_set.
 
-	    // let H_bar_bar_compute_time = start_timer!(|| format!("H_bar_bar compute"));
-	    let H_bar_bar = Self::compute_H_bar_bar(&O_bar_set, &a_vec);
-	    // end_timer!(H_bar_bar_compute_time);
+	    let H_bar = Self::compute_H_bar(&O_bar_set, &a_vec);
 
-	    // let H_bar_bar_commit_time = start_timer!(|| format!("H_bar_bar univariate commit"));
-	    let H_bar_bar_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &H_bar_bar).unwrap();
-	    // end_timer!(H_bar_bar_commit_time);
+	    let H_bar_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &H_bar).unwrap();
 
-	    util::append_commitment_to_transcript::<E>(&mut transcript, b"H_bar_bar_commit", &H_bar_bar_commit);
-	    // println!("H_bar_bar: {:?}", H_bar_bar);
+	    util::append_commitment_to_transcript::<E>(&mut transcript, b"H_bar_commit", &H_bar_commit);
 
-	    // let K_hat_compute_time = start_timer!(|| format!("K_hat compute"));
 	    let K_hat = Self::compute_K_hat(&O_tilde_set, &a_vec);
-	    // end_timer!(K_hat_compute_time);
 
-	    // let K_hat_commit_time = start_timer!(|| format!("K_hat univariate commit"));
 	    let K_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &K_hat).unwrap();
-	    // end_timer!(K_hat_commit_time);
 
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"K_hat_commit", &K_hat_commit);
-	    // println!("K_hat: {:?}", K_hat);
 
-	    // let K_ext_hat_K_ext_tilde_compute_time = start_timer!(|| format!("K_ext_hat and K_ext_tilde compute"));
 	    let mut K_ext_hat_coeffs : Vec<E::ScalarField> = Vec::new();
 	    for coeff in &K_hat.coeffs {
 	    	for i in 0..(1 << number_of_initial_rounds) {
@@ -785,14 +676,9 @@ impl<E: Pairing> HybridPlonk<E> {
 	    	}
 	    }
 	    let K_ext_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(K_ext_hat_coeffs);
-	    // println!("K_ext_hat: {:?}", K_ext_hat);
 	    let K_ext_tilde = DenseMultilinearExtension::<E::ScalarField>::from_evaluations_vec(log_number_of_gates, K_ext_hat.coeffs().to_vec());
-	    // end_timer!(K_ext_hat_K_ext_tilde_compute_time);
-	    // println!("K_ext_tilde: {:?}", K_ext_tilde);
 
-	    // let K_ext_hat_K_ext_tilde_commit_time = start_timer!(|| format!("K_ext_hat univariate commit"));
 	    let K_ext_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &K_ext_hat).unwrap();
-	    // end_timer!(K_ext_hat_K_ext_tilde_commit_time);
 
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"K_ext_hat_commit", &K_ext_hat_commit);
 
@@ -802,141 +688,79 @@ impl<E: Pairing> HybridPlonk<E> {
 	    eval_point.extend_from_slice(&alphas);
 	    eval_point.extend_from_slice(&y);
 	    let V_y = K_ext_tilde.evaluate(&eval_point);
-	    // assert_eq!(K_tilde.evaluate(&y), V_y);
-	    // println!("V_y: {}", V_y);
 
-	    // let e_hat_coeffs_compute_time = start_timer!(|| format!("e_hat coeffs compute"));
 	    let e_hat_coeffs = Self::compute_e_hat_coeffs(kappa, &y);
-	    // end_timer!(e_hat_coeffs_compute_time);
-	    // println!("e_hat_coeffs: {:?}", e_hat_coeffs);
 
-	    // let t_hat_compute_time = start_timer!(|| format!("t_hat compute"));
 	    let t_hat = Self::compute_t_hat(m, &e_hat_coeffs);
-	    // end_timer!(t_hat_compute_time);
-	    // println!("t_hat: {:?}", t_hat);
 
-	    // let t_hat_commit_time = start_timer!(|| format!("t_hat univariate commit"));
 	    let t_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &t_hat).unwrap();
-	    // end_timer!(t_hat_commit_time);
-
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"t_hat_commit", &t_hat_commit);
 
 	    let eta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"eta");
 	    let eval_for_eta = t_hat.evaluate(&eta) * (eta.pow(&[m as u64]) - E::ScalarField::one()).inverse().unwrap();
 	    
-	    // let A_hat_compute_time = start_timer!(|| format!("A_hat compute"));
 	    let A_hat = Self::compute_A_hat(eta, m);
-	    // end_timer!(A_hat_compute_time);
-	    // println!("A_hat: {:?}", A_hat);
 
-	    // let A_hat_commit_time = start_timer!(|| format!("A_hat univariate commit"));
 	    let A_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &A_hat).unwrap();
-	    // end_timer!(A_hat_commit_time);
-
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"A_hat_commit", &A_hat_commit);
 
 	    let delta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"delta");
 	    let eval_for_delta = (delta.pow(&[m as u64]) - E::ScalarField::one()) * (delta - E::ScalarField::one()).inverse().unwrap();
 
-	    // let B_hat_delta_coeffs_compute_time = start_timer!(|| format!("B_hat_delta_coeffs compute"));
 	    let B_hat_delta_coeffs = Self::compute_B_hat_delta_coeffs(&A_hat, delta, m);
-	    // end_timer!(B_hat_delta_coeffs_compute_time);
-	    // println!("B_hat_delta_coeffs: {:?}", B_hat_delta_coeffs);
 
 	    let epsilon = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"epsilon");
 
-	    // let S_hat_compute_time = start_timer!(|| format!("S_hat compute"));
-	    let S_hat = Self::compute_S_hat(V_y, eval_for_eta, eval_for_delta, &H_bar_bar, &t_hat, &A_hat, &e_hat_coeffs, &B_hat_delta_coeffs, epsilon, m);
-	    // end_timer!(S_hat_compute_time);
-	    // println!("S_hat: {:?}", S_hat);
-	    // let S_hat_commit_time = start_timer!(|| format!("S_hat univariate commit"));
-	    let S_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &S_hat).unwrap();
-	    // end_timer!(S_hat_commit_time);
+	    let S_hat = Self::compute_S_hat(V_y, eval_for_eta, eval_for_delta, &H_bar, &t_hat, &A_hat, &e_hat_coeffs, &B_hat_delta_coeffs, epsilon, m);
 
+	    let S_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &S_hat).unwrap();
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"S_hat_commit", &S_hat_commit);
 
-	    // let v0v1u0u1_from_multilinear_to_univariate_convert_time = start_timer!(|| format!("v0v1u0u1 multilinear to univariate convert"));
 	    let v0_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(v_0_tilde.to_evaluations());
 	    let v1_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(v_1_tilde.to_evaluations());
 	    let u0_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(u_0_tilde.to_evaluations());
 	    let u1_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(u_1_tilde.to_evaluations());
-	    // end_timer!(v0v1u0u1_from_multilinear_to_univariate_convert_time);
 
-	    // let d_hat_compute_time = start_timer!(|| format!("d_hat compute"));
 	    let d_hat = Self::compute_d_hat(&u0_hat, &u1_hat, &v0_hat, &v1_hat, &K_hat, &h_hat, epsilon, number_of_gates, m);
-	    // end_timer!(d_hat_compute_time);
-	    // println!("d_hat: {:?}", d_hat);
-	    // let d_hat_commit_time = start_timer!(|| format!("d_hat univariate commit"));
-	    let d_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &d_hat).unwrap();
-	    // end_timer!(d_hat_commit_time);
 
+	    let d_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &d_hat).unwrap();
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"d_hat_commit", &d_hat_commit);
 
 	    let max_deg = number_of_gates;
 
-	    // let D_hat_compute_time = start_timer!(|| format!("D_hat compute"));
 	    let D_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); max_deg - number_of_gates + 1], d_hat.coeffs().to_vec()].concat().to_vec());
-	    // end_timer!(D_hat_compute_time);
 
-	    // let D_hat_commit_time = start_timer!(|| format!("D_hat univariate commit"));
 	    let D_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &D_hat).unwrap();
-	    // end_timer!(D_hat_commit_time);
-
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"D_hat_commit", &D_hat_commit);
 
 	    let r = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"r");
-	    // println!("r in prove: {}", r);
+	    let r_inverse = r.inverse().unwrap();
 
-	    // let W1W2W3W4W5W6_eval_time = start_timer!(|| format!("W1W2W3W4W5W6 evalaution"));
 	    let W1 = (&v0_hat + &v1_hat * r).evaluate(&r.pow(&[2 as u64]));
-	    
-	    // let uv_left_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &uv_left, r).unwrap();
-
 	    let W2 = K_hat.evaluate(&r.pow(&[(1 << number_of_initial_rounds) as u64]));
-	    // let K_ext_hat_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &K_ext_hat, r).unwrap();
+	    let W3 = t_hat.evaluate(&r_inverse);
+	    let W4 = H_bar.evaluate(&r_inverse);
+	    let W5 = A_hat.evaluate(&r_inverse);
+	    let W6 = S_hat.evaluate(&r_inverse);
 
-	    let W3 = t_hat.evaluate(&(r.inverse().unwrap()));
-	    let W4 = H_bar_bar.evaluate(&(r.inverse().unwrap()));
-	    let W5 = A_hat.evaluate(&(r.inverse().unwrap()));
-	    let W6 = S_hat.evaluate(&(r.inverse().unwrap()));
-	    // end_timer!(W1W2W3W4W5W6_eval_time);
-
-	    // let uv_left_compute_time = start_timer!(|| format!("uv_left compute"));
 	    let uv_left = &u0_hat + &u1_hat * r.pow(&[number_of_gates as u64]);
-	    // end_timer!(uv_left_compute_time);
 
-	    // let B_hat_eval_time = start_timer!(|| format!("B_hat eval time"));
-	    let B_hat_delta_inv_eval = Self::evaluate_B_hat_at_point(&eta, &(delta * r.inverse().unwrap()), kappa);
-	    // end_timer!(B_hat_eval_time);
+	    let B_hat_delta_inv_eval = Self::evaluate_B_hat_at_point(&eta, &(delta * r_inverse), kappa);
 
-	    // let e_hat_eval_time = start_timer!(|| format!("e_hat eval time"));
-	    let e_hat_inv_eval = Self::evaluate_e_hat_at_point(kappa, &y, &(r.inverse().unwrap()));
-	    // end_timer!(e_hat_eval_time);
+	    let e_hat_inv_eval = Self::evaluate_e_hat_at_point(kappa, &y, &r_inverse);
 
-	    // let S_equality_left_compute_time = start_timer!(|| format!("S_equality_left compute"));
-	    let S_equality_left = (&H_bar_bar * W3 + &t_hat * W4) + (&A_hat * e_hat_inv_eval) * epsilon + (&A_hat * B_hat_delta_inv_eval) * epsilon * epsilon - &S_hat * r;
-	    // end_timer!(S_equality_left_compute_time);
-	    // let S_hat_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &S_equality_left, r).unwrap();
+	    let S_equality_left = (&H_bar * W3 + &t_hat * W4) + (&A_hat * e_hat_inv_eval) * epsilon + (&A_hat * B_hat_delta_inv_eval) * epsilon * epsilon - &S_hat * r;
 
-	    // let deg_check_left_compute_time = start_timer!(|| format!("deg_check_left compute"));
 	    let deg_check_left = &d_hat - &u0_hat - &u1_hat * epsilon - &v0_hat * epsilon.pow(&[2 as u64]) - &v1_hat * epsilon.pow(&[3 as u64]) 
 	    						- &K_hat * r.pow(&[(number_of_gates - m) as u64]) * epsilon.pow(&[4 as u64]) - &h_hat * r.pow(&[(number_of_gates - m + 1) as u64]) * epsilon.pow(&[5 as u64]);
-	    // end_timer!(deg_check_left_compute_time);
-	    // let deg_check_left_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &deg_check_left, r).unwrap();
 
 	    let phi = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"phi");
 
-	    // let L_hat_compute_time = start_timer!(|| format!("L_hat compute"));
 	    let L_hat = uv_left + K_ext_hat * phi + S_equality_left * phi.pow(&[2 as u64]) + deg_check_left * phi.pow(&[3 as u64]);
-	    // end_timer!(L_hat_compute_time);
 
-	    // let L_hat_eval_prove_time = start_timer!(|| format!("L_hat eval prove"));
 	    let L_hat_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &L_hat, r).unwrap();
-	    // end_timer!(L_hat_eval_prove_time);
 
-	    // let eq_tilde_eval_time = start_timer!(|| format!("eq_tilde eval time"));
 		let eq_tilde_val = Self::evaluate_eq_tilde_at_point(log_number_of_gates, &tau, &eval_point);
-		// end_timer!(eq_tilde_eval_time);
 
 		let mut linear_combined_orig_mlps_and_K_ext_tilde_evals: Vec<_> = Vec::new();
 		for i in 0..number_of_gates {
@@ -950,8 +774,6 @@ impl<E: Pairing> HybridPlonk<E> {
 		let combined_mlp = DenseMultilinearExtension::<E::ScalarField>::from_evaluations_vec(log_number_of_gates, linear_combined_orig_mlps_and_K_ext_tilde_evals);
 		let combined_mlp_eval = (E::ScalarField::one() + epsilon) * V_y - eq_tilde_val * a_vec[0];
 		let combined_mlp_eval_proof = SamaritanMLPCS::<E>::prove(&srs, &combined_mlp, &eval_point, combined_mlp_eval, &mut rng).unwrap();
-		// assert_eq!(combined_mlp.evaluate(&eval_point), combined_mlp_eval);
-
 
 		let proof = HybridPlonkProof{
 			number_of_initial_rounds,
@@ -976,9 +798,9 @@ impl<E: Pairing> HybridPlonk<E> {
 			V_id2,
 			V_id3,
 			V_u0,
+			F_bar_commit,
+			F_bar_eval_proof,
 			H_bar_commit,
-			H_bar_eval_proof,
-			H_bar_bar_commit,
 			K_hat_commit,
 			K_ext_hat_commit,
 			V_y,
@@ -1003,7 +825,7 @@ impl<E: Pairing> HybridPlonk<E> {
 	}
 
 	pub fn verify(proof: &HybridPlonkProof<E>, ckt: &HybridPlonkCircuit<E>, srs: &SamaritanMLPCS_SRS<E>) -> Result<bool, Error> {
-		// some pre-computations
+		// some pre-computations, can be done during setup, hence excluded from verifier time
 		let qM_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qM).unwrap();
 		let qL_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qL).unwrap();
 		let qR_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qR).unwrap();
@@ -1043,31 +865,32 @@ impl<E: Pairing> HybridPlonk<E> {
 		let xi = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"xi");
 		let tau = util::sample_random_challenge_vector_from_transcript::<E>(&mut transcript, b"tau", log_number_of_gates);
 		let mut alphas: Vec<_> = Vec::new();
-		let mut prev_d_plus_one_evaluation_points: Vec<_> = Vec::new();
 		let mut cur_eval_value = E::ScalarField::zero();
-		for i in 0..proof.number_of_initial_rounds {
-			let d_plus_one_evaluation_points = util::sample_random_challenge_vector_from_transcript::<E>(&mut transcript, b"d_plus_one_evaluation_points", 6);
-			if i > 0 {
+        let mut d_plus_one_evaluation_points = (1..=5).map(|x| E::ScalarField::from(x as u64)).collect::<Vec<_>>();
+        d_plus_one_evaluation_points.push(E::ScalarField::zero());
+
+        for i in 0..proof.number_of_initial_rounds {
+
+            if i > 0 {
 				let alpha = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha");
-				// println!("verify::alpha: {}", alpha);
 				alphas.push(alpha);
-				cur_eval_value = Self::compute_evaluation_through_lagrange_interpolation(&prev_d_plus_one_evaluation_points, &proof.coeffs[i-1], alpha);
+				let mut coeffs = proof.coeffs[i-1].clone();
+				coeffs.push(cur_eval_value - coeffs[0]);
+				cur_eval_value = Self::compute_evaluation_through_lagrange_interpolation(&d_plus_one_evaluation_points, &coeffs, alpha);
 			}
 			util::append_field_element_vector_to_transcript::<E>(&mut transcript, b"d_plus_one_evaluations", &proof.coeffs[i]);
-			let univariate_evaluated_at_zero = Self::compute_evaluation_through_lagrange_interpolation(&d_plus_one_evaluation_points, &proof.coeffs[i], E::ScalarField::zero());
-			let univariate_evaluated_at_one = Self::compute_evaluation_through_lagrange_interpolation(&d_plus_one_evaluation_points, &proof.coeffs[i], E::ScalarField::one());
-			assert_eq!(univariate_evaluated_at_zero + univariate_evaluated_at_one, cur_eval_value);
-			prev_d_plus_one_evaluation_points = d_plus_one_evaluation_points;
 		}
 		let alpha_nu = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha_nu");
-		// println!("verify::alpha_nu: {}", alpha_nu);
-		cur_eval_value = Self::compute_evaluation_through_lagrange_interpolation(&prev_d_plus_one_evaluation_points, &proof.coeffs[proof.number_of_initial_rounds-1], alpha_nu);
+
+		let mut final_poly_coeffs = proof.coeffs[proof.number_of_initial_rounds-1].clone();
+		final_poly_coeffs.push(cur_eval_value- final_poly_coeffs[0]);
+
+		cur_eval_value = Self::compute_evaluation_through_lagrange_interpolation(&d_plus_one_evaluation_points, &final_poly_coeffs, alpha_nu);
 		alphas.push(alpha_nu);
 
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"g_hat_commit", &proof.g_hat_commit);
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"h_hat_commit", &proof.h_hat_commit);
 		let z = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"z");
-		// println!("z in verify: {}", z);
 
 		let alpha_ = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha_");
 		let mut alpha_powers : Vec<E::ScalarField> = Vec::new();
@@ -1080,12 +903,11 @@ impl<E: Pairing> HybridPlonk<E> {
 	    let V = proof.V_eq * alpha_powers[0] + proof.V_w1 * alpha_powers[1] + proof.V_w2 * alpha_powers[2] + proof.V_w3 * alpha_powers[3]
 	    		+ proof.V_sigma1 * alpha_powers[4] + proof.V_sigma2 * alpha_powers[5] + proof.V_sigma3 * alpha_powers[6]
 	    		+ proof.V_id1 * alpha_powers[7] + proof.V_id2 * alpha_powers[8] + proof.V_id3 * alpha_powers[9]
-	    		+ proof.V_u0 * alpha_powers[10];
-	    util::append_commitment_to_transcript::<E>(&mut transcript, b"H_bar_commit", &proof.H_bar_commit);
-	    let H_bar_equality_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &proof.H_bar_commit, z, V, &proof.H_bar_eval_proof).unwrap();
-	    assert_eq!(H_bar_equality_check, true);
+	    		+ proof.V_u0 * alpha_powers[10] + cur_eval_value * E::ScalarField::from(m as u64).inverse().unwrap();
+	    util::append_commitment_to_transcript::<E>(&mut transcript, b"F_bar_commit", &proof.F_bar_commit);
+	    let F_bar_equality_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &proof.F_bar_commit, z, V, &proof.F_bar_eval_proof).unwrap();
 
-	    util::append_commitment_to_transcript::<E>(&mut transcript, b"H_bar_bar_commit", &proof.H_bar_bar_commit);
+	    util::append_commitment_to_transcript::<E>(&mut transcript, b"H_bar_commit", &proof.H_bar_commit);
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"K_hat_commit", &proof.K_hat_commit);
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"K_ext_hat_commit", &proof.K_ext_hat_commit);
 
@@ -1108,38 +930,26 @@ impl<E: Pairing> HybridPlonk<E> {
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"D_hat_commit", &proof.D_hat_commit);
 
 	    let r = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"r");
-	    // println!("r in verify: {}", r);
-	    
-	    // let uv_left_comm: ark_poly_commit::kzg10::Commitment<E> = Commitment(E::G1::msm(&vec![proof.u_0_tilde_commit.0, proof.u_1_tilde_commit.0], &vec![E::ScalarField::from(1 as u64), r.pow(&[number_of_gates as u64])]).unwrap().into_affine());
-	    // let uv_equality_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &uv_left_comm, r, proof.W1, &proof.uv_left_eval_proof).unwrap();
-	    // assert_eq!(uv_equality_check, true);
 
 	    let K_ext_hat_eval = proof.W2 * (r.pow(&[(1 << number_of_initial_rounds) as u64]) - E::ScalarField::from(1 as u64)) * (r - E::ScalarField::from(1 as u64)).inverse().unwrap();
-	    // let K_ext_hat_equality_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &proof.K_ext_hat_commit, r, K_ext_hat_eval, &proof.K_ext_hat_eval_proof).unwrap();
-	    // assert_eq!(K_ext_hat_equality_check, true);
+
+	    let r_inverse = r.inverse().unwrap();
 
 	    let B_hat_delta_eval = Self::evaluate_B_hat_at_point(&eta, &(delta * r), kappa);
-	    let B_hat_delta_inv_eval = Self::evaluate_B_hat_at_point(&eta, &(delta * r.inverse().unwrap()), kappa);
+	    let B_hat_delta_inv_eval = Self::evaluate_B_hat_at_point(&eta, &(delta * r_inverse), kappa);
 
 	    let e_hat_eval = Self::evaluate_e_hat_at_point(kappa, &y, &r);
-	    let e_hat_inv_eval = Self::evaluate_e_hat_at_point(kappa, &y, &(r.inverse().unwrap()));
+	    let e_hat_inv_eval = Self::evaluate_e_hat_at_point(kappa, &y, &r_inverse);
 
-	    // let combined_commit: ark_poly_commit::kzg10::Commitment<E> = Commitment(E::G1::msm(&vec![proof.H_bar_bar_commit.0, proof.t_hat_commit.0, proof.A_hat_commit.0, proof.S_hat_commit.0], &vec![proof.W3, proof.W4, epsilon * epsilon * B_hat_delta_inv_eval + epsilon * e_hat_inv_eval, E::ScalarField::zero()-r]).unwrap().into_affine());
-		let combined_eval = (proof.V_y + proof.eval_for_eta * epsilon + proof.eval_for_delta * epsilon * epsilon) * E::ScalarField::from(2 as u64) + r.inverse().unwrap() * proof.W6 - epsilon * proof.W5 * e_hat_eval - epsilon * epsilon * proof.W5 * B_hat_delta_eval;
-	    // let S_equality_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &combined_commit, r, combined_eval, &proof.S_hat_eval_proof).unwrap();
-	    // assert_eq!(S_equality_check, true);
+		let combined_eval = (proof.V_y + proof.eval_for_eta * epsilon + proof.eval_for_delta * epsilon * epsilon) * E::ScalarField::from(2 as u64) + r_inverse * proof.W6 - epsilon * proof.W5 * e_hat_eval - epsilon * epsilon * proof.W5 * B_hat_delta_eval;
 
 	    let max_deg = number_of_gates + 1;
-	    // let deg_check_left_comm: ark_poly_commit::kzg10::Commitment<E> = Commitment(E::G1::msm(&vec![proof.d_hat_commit.0, proof.u_0_tilde_commit.0, proof.u_1_tilde_commit.0, proof.v_0_tilde_commit.0, proof.v_1_tilde_commit.0, proof.K_hat_commit.0, proof.h_hat_commit.0], 
-	    // 	&vec![E::ScalarField::one(), -E::ScalarField::one(), -epsilon, -epsilon.pow(&[2 as u64]), -epsilon.pow(&[3 as u64]), -(r.pow(&[(number_of_gates - m) as u64]) * epsilon.pow(&[4 as u64])), -(r.pow(&[(number_of_gates - m + 1) as u64]) * epsilon.pow(&[5 as u64]))]).unwrap().into_affine());
-	    // let deg_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &deg_check_left_comm, r, E::ScalarField::zero(), &proof.deg_check_left_eval_proof).unwrap();
-	    // assert_eq!(deg_check, true);
 
 	    let phi = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"phi");
 
 	    let comm_list = vec![proof.u_0_tilde_commit.0, proof.u_1_tilde_commit.0, 
 	    			proof.K_ext_hat_commit.0, 
-	    			proof.H_bar_bar_commit.0, proof.t_hat_commit.0, 
+	    			proof.H_bar_commit.0, proof.t_hat_commit.0, 
 	    			proof.A_hat_commit.0, proof.S_hat_commit.0, 
 	    			proof.d_hat_commit.0, proof.v_0_tilde_commit.0, proof.v_1_tilde_commit.0, proof.K_hat_commit.0, proof.h_hat_commit.0];
 	    let scalar_list = vec![E::ScalarField::one() - phi.pow(&[3 as u64]), r.pow(&[number_of_gates as u64]) - epsilon * phi.pow(&[3 as u64]),
@@ -1152,7 +962,6 @@ impl<E: Pairing> HybridPlonk<E> {
 	    let phi_combined_univariates_commit = Commitment(E::G1::msm(&comm_list, &scalar_list).unwrap().into_affine());
 	    let phi_combined_eval = proof.W1 + K_ext_hat_eval * phi + combined_eval * phi.pow(&[2 as u64]);
 	    let L_equality_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &phi_combined_univariates_commit, r, phi_combined_eval, &proof.L_hat_eval_proof).unwrap();
-	    assert_eq!(L_equality_check, true);
 
 	    let pairing_lhs_first = E::G1Prepared::from(proof.d_hat_commit.0);
         let pairing_lhs_second = srs.powers_of_h[max_deg - number_of_gates];
@@ -1161,8 +970,6 @@ impl<E: Pairing> HybridPlonk<E> {
         let pairing_rhs_first = E::G1Prepared::from(proof.D_hat_commit.0);
         let pairing_rhs_second = srs.powers_of_h[0];
         let pairing_rhs_res = E::pairing(pairing_rhs_first, pairing_rhs_second);
-
-        assert_eq!(pairing_lhs_res, pairing_rhs_res);
 
         let mut eval_point = Vec::new();
 	    eval_point.extend_from_slice(&alphas);
@@ -1183,12 +990,10 @@ impl<E: Pairing> HybridPlonk<E> {
 		    						).unwrap().into_affine());
 		let combined_mlp_eval = (E::ScalarField::one() + epsilon) * proof.V_y - eq_tilde_val * a_vec[0];
 		let combined_mlp_check = SamaritanMLPCS::<E>::verify(&srs, &combined_mlp_commit, &eval_point, combined_mlp_eval, &proof.combined_mlp_eval_proof).unwrap();
-        assert_eq!(combined_mlp_check, true);
 
         // end_timer!(verifier_time);
-        // Ok(H_bar_equality_check && uv_equality_check && K_ext_hat_equality_check && S_equality_check && deg_check && combined_mlp_check && pairing_lhs_res == pairing_rhs_res)
         // Note that L_equality_check includes uv_equality_check, K_ext_hat_equality_check, S_equality_check, and deg_check together.
-        Ok(H_bar_equality_check && L_equality_check && combined_mlp_check && pairing_lhs_res == pairing_rhs_res)
+        Ok(F_bar_equality_check && L_equality_check && combined_mlp_check && pairing_lhs_res == pairing_rhs_res)
 
 	}
 }
@@ -1196,6 +1001,8 @@ impl<E: Pairing> HybridPlonk<E> {
 #[cfg(test)]
 mod tests {
     #![allow(non_camel_case_types)]
+
+    use std::time::Instant;
     use ark_poly_commit::*;
     use ark_ec::pairing::Pairing;
     use ark_bls12_381::Bls12_381;
@@ -1216,94 +1023,12 @@ mod tests {
     #[test]
     fn functionality_test(){
     	let mut rng = &mut test_rng();
-
-    	// let log_number_of_gates: usize = 4;
-    	// let number_of_gates = 1 << log_number_of_gates;
-    	// // let number_of_gates: usize = 16;
-    	// let number_of_wires: usize = 3 * number_of_gates;
-    	// let srs = SamaritanMLPCS_Bls12_381::setup(log_number_of_gates, &mut rng).unwrap();
-
-    	// let evaluation_vec_L = [Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64),
-    	// 	Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(0 as u64)].to_vec();
-    	// let evaluation_vec_R = [Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64),
-    	// 	Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(0 as u64)].to_vec();
-    	// let evaluation_vec_O = [-Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64),
-    	// 	-Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64)].to_vec();
-    	// let evaluation_vec_M = [Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64),
-    	// 	Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(1 as u64)].to_vec();
-    	// let evaluation_vec_C = [Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64),
-    	// 	Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64)].to_vec();
-    	
-		// let sigma_1_vec = [Fr::from(1 as u64), Fr::from(2 as u64), Fr::from(3 as u64), Fr::from(4 as u64), Fr::from(5 as u64), Fr::from(6 as u64), Fr::from(33 as u64), Fr::from(34 as u64),
-		// 	Fr::from(35 as u64), Fr::from(36 as u64), Fr::from(37 as u64), Fr::from(39 as u64), Fr::from(40 as u64), Fr::from(41 as u64), Fr::from(44 as u64), Fr::from(47 as u64)].to_vec();
-		// let sigma_2_vec = [Fr::from(17 as u64), Fr::from(18 as u64), Fr::from(19 as u64), Fr::from(20 as u64), Fr::from(21 as u64), Fr::from(22 as u64), Fr::from(28 as u64), Fr::from(9 as u64),
-		// 	Fr::from(10 as u64), Fr::from(27 as u64), Fr::from(38 as u64), Fr::from(8 as u64), Fr::from(43 as u64), Fr::from(42 as u64), Fr::from(45 as u64), Fr::from(46 as u64)].to_vec();
-		// let sigma_3_vec = [Fr::from(7 as u64), Fr::from(23 as u64), Fr::from(24 as u64), Fr::from(25 as u64), Fr::from(11 as u64), Fr::from(26 as u64), Fr::from(12 as u64), Fr::from(13 as u64),
-		// 	Fr::from(14 as u64), Fr::from(30 as u64), Fr::from(29 as u64), Fr::from(15 as u64), Fr::from(31 as u64), Fr::from(32 as u64), Fr::from(16 as u64), Fr::from(48 as u64)].to_vec();
-		// // println!("sigma_1_vec: {:?}", sigma_1_vec);
-		// // println!("sigma_2_vec: {:?}", sigma_2_vec);
-		// // println!("sigma_3_vec: {:?}", sigma_3_vec);
-    	// let sigma_1 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, sigma_1_vec);
-    	// let sigma_2 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, sigma_2_vec);
-    	// let sigma_3 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, sigma_3_vec);
-
-    	// let id_1_vec = (1..=number_of_gates).map(|i| Fr::from(i as u64)).collect();
-    	// let id_2_vec = ((number_of_gates+1)..=(2*number_of_gates)).map(|i| Fr::from(i as u64)).collect();
-    	// let id_3_vec = ((2*number_of_gates+1)..=(3*number_of_gates)).map(|i| Fr::from(i as u64)).collect();
-    	// // println!("id_1_vec: {:?}", id_1_vec);
-		// // println!("id_2_vec: {:?}", id_2_vec);
-		// // println!("id_3_vec: {:?}", id_3_vec);
-		// let id_1 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, id_1_vec);
-    	// let id_2 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, id_2_vec);
-    	// let id_3 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, id_3_vec);
-
-    	// let myckt = HybridPlonkCircuit::<Bls12_381>{
-    	// 	log_number_of_gates,
-    	// 	number_of_wires,
-    	// 	qL: DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, evaluation_vec_L),
-    	// 	qR: DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, evaluation_vec_R),
-    	// 	qO: DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, evaluation_vec_O),
-    	// 	qM: DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, evaluation_vec_M),
-    	// 	qC: DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, evaluation_vec_C),
-    	// 	sigma_1,
-    	// 	sigma_2,
-    	// 	sigma_3,
-    	// 	id_1,
-    	// 	id_2,
-    	// 	id_3,
-    	// };
-    	// println!("myckt: {:?}", myckt);
-
-    	// let w1_vec = [Fr::from(1 as u64), Fr::from(2 as u64), Fr::from(3 as u64), Fr::from(4 as u64), Fr::from(5 as u64), Fr::from(2 as u64), Fr::from(3 as u64), Fr::from(3 as u64),
-    	// 	Fr::from(3 as u64), Fr::from(6 as u64), Fr::from(10 as u64), Fr::from(9 as u64), Fr::from(6 as u64), Fr::from(9 as u64), Fr::from(12 as u64), Fr::from(102 as u64)].to_vec();
-    	// let w2_vec = [Fr::from(2 as u64), Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(2 as u64), Fr::from(2 as u64), Fr::from(3 as u64), Fr::from(3 as u64), Fr::from(3 as u64),
-    	// 	Fr::from(6 as u64), Fr::from(5 as u64), Fr::from(5 as u64), Fr::from(3 as u64), Fr::from(15 as u64), Fr::from(11 as u64), Fr::from(90 as u64), Fr::from(20 as u64)].to_vec();
-    	// let w3_vec = [Fr::from(3 as u64), Fr::from(3 as u64), Fr::from(3 as u64), Fr::from(6 as u64), Fr::from(10 as u64), Fr::from(5 as u64), Fr::from(9 as u64), Fr::from(6 as u64),
-    	// 	Fr::from(9 as u64), Fr::from(11 as u64), Fr::from(15 as u64), Fr::from(12 as u64), Fr::from(90 as u64), Fr::from(20 as u64), Fr::from(102 as u64), Fr::from(2040 as u64)].to_vec();
-    	
-    	// println!("w1_vec: {:?}", w1_vec);
-    	// println!("w2_vec: {:?}", w2_vec);
-    	// println!("w3_vec: {:?}", w3_vec);
-
-    	// let w1 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, w1_vec);
-    	// let w2 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, w2_vec);
-    	// let w3 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, w3_vec);
-
-    	// let hybridplonk_proof = HybridPlonk_Bls12_381::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
-    	// let valid = HybridPlonk_Bls12_381::verify(&hybridplonk_proof, &myckt, &srs).unwrap();
-        // assert_eq!(valid, true);
-
-
-
-    	// n is the dimension of each of the two vectors (A and B) participating in inner product. (2*n) is the number of gates in the circuit. 2^(n+1) is the size of 
+        // n is the dimension of each of the two vectors (A and B) participating in inner product. (2*n) is the number of gates in the circuit. 2^(n+1) is the size of
     	// evaluation vecs of each mlp. In short #vars = (n + 1).
-    	let n: usize = 1 << 15;
+    	let n: usize = 1 << 14;
     	let A: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
     	let B: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
-    	// println!("A: {:?}, B: {:?}", A, B);
     	let myckt: HybridPlonkCircuit::<Bls12_381> = HybridPlonk_Bls12_381::generate_circuit_for_inner_product(&A, &B, n);
-    	// let myckt: HybridPlonkCircuit::<Bn254> = HybridPlonk_Bn254::generate_circuit_for_inner_product(&A, &B, n);
-    	// println!("myckt: {:?}", myckt);
 
     	let mut w1_vec: Vec<_> = Vec::new();
     	let mut w2_vec: Vec<_> = Vec::new();
@@ -1331,25 +1056,21 @@ mod tests {
     		w3_vec.push(w1_vec[n + i] + w2_vec[n + i]);
     	}
 
-    	// println!("w1_vec: {:?}", w1_vec);
-    	// println!("w2_vec: {:?}", w2_vec);
-    	// println!("w3_vec: {:?}", w3_vec);
+
 
     	let w1 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w1_vec);
     	let w2 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w2_vec);
     	let w3 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w3_vec);
 
     	let srs = SamaritanMLPCS_Bls12_381::setup(myckt.log_number_of_gates, &mut rng).unwrap();
+        let mut start = Instant::now();
     	let hybridplonk_proof = HybridPlonk_Bls12_381::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
 
+        println!("Time taken for proof generation = {} seconds", start.elapsed().as_secs());
+
     	println!("number of initial rounds: {}", hybridplonk_proof.number_of_initial_rounds);
-    	let valid = HybridPlonk_Bls12_381::verify(&hybridplonk_proof, &myckt, &srs).unwrap();
-
-    	// let srs = SamaritanMLPCS_Bn254::setup(myckt.log_number_of_gates, &mut rng).unwrap();
-    	// let hybridplonk_proof = HybridPlonk_Bn254::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
-
-    	// println!("number of initial rounds: {}", hybridplonk_proof.number_of_initial_rounds);
-    	// let valid = HybridPlonk_Bn254::verify(&hybridplonk_proof, &myckt, &srs).unwrap();
+        let valid = HybridPlonk_Bls12_381::verify(&hybridplonk_proof, &myckt, &srs).unwrap();
         assert_eq!(valid, true);
+
     }
 }

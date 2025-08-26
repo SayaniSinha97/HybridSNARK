@@ -83,20 +83,11 @@ impl<E: Pairing> HyperPlonk<E> {
 		let evaluation_vec_M = [vec![E::ScalarField::one(); n], vec![E::ScalarField::zero(); n]].concat();
 		let evaluation_vec_O = vec![-E::ScalarField::one(); 2*n];
 		let evaluation_vec_C = vec![E::ScalarField::zero(); 2*n];
-		// println!("evaluation_vec_L: {:?}", evaluation_vec_L);
-		// println!("evaluation_vec_R: {:?}", evaluation_vec_R);
-		// println!("evaluation_vec_M: {:?}", evaluation_vec_M);
-		// println!("evaluation_vec_O: {:?}", evaluation_vec_O);
-		// println!("evaluation_vec_C: {:?}", evaluation_vec_C);
-
 
 		let id_1_vec = (1..=number_of_gates).map(|i| E::ScalarField::from(i as u64)).collect();
     	let id_2_vec = ((number_of_gates+1)..=(2*number_of_gates)).map(|i| E::ScalarField::from(i as u64)).collect();
     	let id_3_vec = ((2*number_of_gates+1)..=(3*number_of_gates)).map(|i| E::ScalarField::from(i as u64)).collect();
-    	// println!("id_1_vec: {:?}", id_1_vec);
-		// println!("id_2_vec: {:?}", id_2_vec);
-		// println!("id_3_vec: {:?}", id_3_vec);
-
+    	
 		let mut sigma_1_vec: Vec<_> = Vec::new();
 		let mut sigma_2_vec: Vec<_> = Vec::new();
 		let mut sigma_3_vec: Vec<_> = Vec::new();
@@ -133,10 +124,6 @@ impl<E: Pairing> HyperPlonk<E> {
 			}
 		}
 
-		// println!("sigma_1_vec: {:?}", sigma_1_vec);
-		// println!("sigma_2_vec: {:?}", sigma_2_vec);
-		// println!("sigma_3_vec: {:?}", sigma_3_vec);
-
 		let myckt = HyperPlonkCircuit::<E>{
     		log_number_of_gates,
     		number_of_wires,
@@ -156,7 +143,6 @@ impl<E: Pairing> HyperPlonk<E> {
 	}
 
 	pub(crate) fn compute_eq_tilde(log_number_of_gates: usize, tau: &Vec<E::ScalarField>) -> DenseMultilinearExtension<E::ScalarField> {
-		// let compute_eq_tilde_time = start_timer!(|| format!("compute_eq_tilde"));
 		let number_of_gates: usize = 1 << log_number_of_gates;
 
 		let mut tau_inverses = tau.clone();
@@ -169,7 +155,7 @@ impl<E: Pairing> HyperPlonk<E> {
 		batch_inversion(&mut one_minus_tau_inverses);
 
 		let gray_code_seq: Vec<_> = (0..number_of_gates).map(|i| i ^ (i >> 1)).collect();
-		// println!("gray_code_seq: {:?}", gray_code_seq);
+
 		let mut first = E::ScalarField::one();
 		for i in 0..log_number_of_gates {
 			first *= E::ScalarField::one() - tau[i];
@@ -178,7 +164,6 @@ impl<E: Pairing> HyperPlonk<E> {
 		let mut bit_seq: Vec<i8> = vec![0; log_number_of_gates];
 		for i in 1..number_of_gates {
 			let flip_pos: usize = (((gray_code_seq[i] as i32) - (gray_code_seq[i-1] as i32)).abs().ilog2()).try_into().unwrap();
-			// println!("i: {}, flip_pos: {}", i, flip_pos);
 			if bit_seq[flip_pos] == 0 {
 				first *= tau[flip_pos] * one_minus_tau_inverses[flip_pos];
 				evals[gray_code_seq[i]] = first;
@@ -190,17 +175,14 @@ impl<E: Pairing> HyperPlonk<E> {
 				bit_seq[flip_pos] = 0;
 			}
 		}
-		// end_timer!(compute_eq_tilde_time);
 		DenseMultilinearExtension::<E::ScalarField>::from_evaluations_vec(log_number_of_gates, evals)
 	}
 
 	pub(crate) fn evaluate_eq_tilde_at_point(log_number_of_gates: usize, tau: &Vec<E::ScalarField>, eval_point: &Vec<E::ScalarField>) -> E::ScalarField {
-		// let evaluate_eq_tilde_at_point_time = start_timer!(|| format!("evaluate_e_hat_at_point"));
 		let mut res = E::ScalarField::one();
 		for i in 0..log_number_of_gates {
 			res = res * (tau[i] * eval_point[i] + (E::ScalarField::one() - tau[i]) * (E::ScalarField::one() - eval_point[i]));
 		}
-		// end_timer!(evaluate_eq_tilde_at_point_time);
 		res
 	}
 
@@ -269,20 +251,20 @@ impl<E: Pairing> HyperPlonk<E> {
 	}
 
 	pub(crate) fn compute_evaluation_through_lagrange_interpolation(d_plus_one_evaluation_points: &Vec<E::ScalarField>, d_plus_one_evaluations: &Vec<E::ScalarField>, alpha: E::ScalarField) -> E::ScalarField {
-		// let compute_evaluation_through_lagrange_interpolation_time = start_timer!(|| format!("compute_evaluation_through_lagrange_interpolation"));
 		assert_eq!(d_plus_one_evaluation_points.len(), d_plus_one_evaluations.len());
 		let num_points = d_plus_one_evaluation_points.len();
 		let mut eval = E::ScalarField::zero();
 		for i in 0..num_points {
 			let mut prod_term = d_plus_one_evaluations[i];
+			let mut denom = E::ScalarField::one();
 			for j in 0..num_points {
 				if i != j {
-					prod_term *= (alpha - d_plus_one_evaluation_points[j]) * ((d_plus_one_evaluation_points[i] - d_plus_one_evaluation_points[j]).inverse().unwrap());
+					prod_term *= alpha - d_plus_one_evaluation_points[j]; 
+					denom *= d_plus_one_evaluation_points[i] - d_plus_one_evaluation_points[j];
 				}
 			}
-			eval += prod_term;
+			eval += prod_term * denom.inverse().unwrap();
 		}
-		// end_timer!(compute_evaluation_through_lagrange_interpolation_time);
 		eval
 	}
 
@@ -305,24 +287,6 @@ impl<E: Pairing> HyperPlonk<E> {
     	DenseMultilinearExtension::<E::ScalarField>::from_evaluations_vec(log_number_of_gates, combined_mlp_evals)
     }
 
-	pub(crate) fn get_evaluation_set(multi_linear_poly: &DenseMultilinearExtension<E::ScalarField>, point: &Vec<E::ScalarField>, kappa: usize, nu: usize) -> Vec<E::ScalarField> {
-        // let time = start_timer!(|| format!("function: get_evaluation_set"));
-        let total_vars = kappa + nu;
-        let mut evaluations = multi_linear_poly.to_evaluations();
-        let sz = evaluations.len();
-        for i in 0..kappa {
-            for j in (0..sz).step_by(2usize.pow((i+1) as u32)) {
-                evaluations[j] = (E::ScalarField::one() - point[i]) * evaluations[j] + point[i] * evaluations[j + 2usize.pow(i as u32)];
-            }
-        }
-        let mut res : Vec<E::ScalarField> = Vec::new();
-        for i in (0..2usize.pow(total_vars as u32)).step_by(2usize.pow(kappa as u32)) {
-            res.push(evaluations[i]);
-        }
-        // end_timer!(time);
-        res
-    }
-
 	pub fn prove(ckt: &HyperPlonkCircuit<E>, w1_tilde: &DenseMultilinearExtension<E::ScalarField>, w2_tilde: &DenseMultilinearExtension<E::ScalarField>, w3_tilde: &DenseMultilinearExtension<E::ScalarField>, srs: &SamaritanMLPCS_SRS<E>) -> Result<HyperPlonkProof<E>, Error> {
 		let log_number_of_gates = ckt.log_number_of_gates;
 		let number_of_wires = ckt.number_of_wires;
@@ -333,37 +297,27 @@ impl<E: Pairing> HyperPlonk<E> {
 		// let prover_time = start_timer!(|| format!("HyperPlonk::prove with log_number_of_gates {}", log_number_of_gates));
 		let mut transcript = Transcript::new(b"HyperPlonk Transcript");
 
-		// let w1w2w3_commit_time = start_timer!(|| format!("w1w2w3 multilinear commit"));
 		let w1_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &w1_tilde).unwrap();
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"w1_tilde_commit", &w1_tilde_commit);
 		let w2_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &w2_tilde).unwrap();
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"w2_tilde_commit", &w2_tilde_commit);
 		let w3_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &w3_tilde).unwrap();
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"w3_tilde_commit", &w3_tilde_commit);
-		// end_timer!(w1w2w3_commit_time);
 
 		let beta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"beta");
 		let gamma = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"gamma");
 
-		// let v0_compute_time = start_timer!(|| format!("v0 compute"));
 		let v_0_tilde = Self::compute_v_0_tilde(log_number_of_gates, &ckt.sigma_1, &ckt.sigma_2, &ckt.sigma_3, &ckt.id_1, &ckt.id_2, &ckt.id_3, &w1_tilde, &w2_tilde, &w3_tilde, beta, gamma);
-		// end_timer!(v0_compute_time);
 
-		// let v0_commit_time = start_timer!(|| format!("v0 multilinear commit"));
 		let v_0_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &v_0_tilde).unwrap();
-		// end_timer!(v0_commit_time);
 
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"v_0_tilde_commit", &v_0_tilde_commit);
 
-		// let v1u0u1_compute_time = start_timer!(|| format!("v1u0u1 compute"));
 		let (v_1_tilde, u_0_tilde, u_1_tilde) = Self::compute_v_1_u_0_u_1_tilde(log_number_of_gates, &v_0_tilde);
-		// end_timer!(v1u0u1_compute_time);
 
-		// let v1u0u1_commit_time = start_timer!(|| format!("v1u0u1 multilinear commit"));
 		let v_1_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &v_1_tilde).unwrap();
 		let u_0_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &u_0_tilde).unwrap();
 		let u_1_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &u_1_tilde).unwrap();
-		// end_timer!(v1u0u1_commit_time);		
 
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"v_1_tilde_commit", &v_1_tilde_commit);
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"u_0_tilde_commit", &u_0_tilde_commit);
@@ -372,62 +326,12 @@ impl<E: Pairing> HyperPlonk<E> {
 		let xi = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"xi");
 		let tau = util::sample_random_challenge_vector_from_transcript::<E>(&mut transcript, b"tau", log_number_of_gates);
 
-		// let eq_tilde_compute_time = start_timer!(|| format!("eq_tilde compute"));
 		let mut eq_tilde = Self::compute_eq_tilde(log_number_of_gates, &tau);
-		// end_timer!(eq_tilde_compute_time);
-
-		// println!("w1_tilde: {:?}", w1_tilde);
-		// println!("w2_tilde: {:?}", w2_tilde);
-		// println!("w3_tilde: {:?}", w3_tilde);
-
-		// ==== (redundant) this part is only to check if individual components of G_tilde evaluates to zero at each point on Boolean hypercube ====
-		// let point = [E::ScalarField::from(1 as u64), E::ScalarField::from(1 as u64), E::ScalarField::from(1 as u64)].to_vec();
-		
-		// let points = vec![[E::ScalarField::from(0 as u64), E::ScalarField::from(0 as u64), E::ScalarField::from(0 as u64)].to_vec(),
-		// 				[E::ScalarField::from(1 as u64), E::ScalarField::from(0 as u64), E::ScalarField::from(0 as u64)].to_vec(),
-		// 				[E::ScalarField::from(0 as u64), E::ScalarField::from(1 as u64), E::ScalarField::from(0 as u64)].to_vec(),
-		// 				[E::ScalarField::from(1 as u64), E::ScalarField::from(1 as u64), E::ScalarField::from(0 as u64)].to_vec(),
-		// 				[E::ScalarField::from(0 as u64), E::ScalarField::from(0 as u64), E::ScalarField::from(1 as u64)].to_vec(),
-		// 				[E::ScalarField::from(1 as u64), E::ScalarField::from(0 as u64), E::ScalarField::from(1 as u64)].to_vec(),
-		// 				[E::ScalarField::from(0 as u64), E::ScalarField::from(1 as u64), E::ScalarField::from(1 as u64)].to_vec(),
-		// 				[E::ScalarField::from(1 as u64), E::ScalarField::from(1 as u64), E::ScalarField::from(1 as u64)].to_vec()];
-		// assert_eq!(v_0_tilde.evaluate(&points[0]) * v_0_tilde.evaluate(&points[1]) * v_0_tilde.evaluate(&points[2]) * v_0_tilde.evaluate(&points[3])
-		// 	* v_0_tilde.evaluate(&points[4]) * v_0_tilde.evaluate(&points[5]) * v_0_tilde.evaluate(&points[6]) * v_0_tilde.evaluate(&points[7]), E::ScalarField::one());
-		// for i in 0..points.len() {
-		// 	let eval_w1 = w1_tilde.evaluate(&points[i]);
-		// 	let eval_w2 = w2_tilde.evaluate(&points[i]);
-		// 	let eval_w3 = w3_tilde.evaluate(&points[i]);
-		// 	println!("eval_w1: {}, eval_w2: {}, eval_w3: {}", eval_w1, eval_w2, eval_w3);
-		// 	let eval_qM = ckt.qM.evaluate(&points[i]);
-		// 	let eval_qL = ckt.qL.evaluate(&points[i]);
-		// 	let eval_qR = ckt.qR.evaluate(&points[i]);
-		// 	let eval_qO = ckt.qO.evaluate(&points[i]);
-		// 	let eval_qC = ckt.qC.evaluate(&points[i]);
-		// 	println!("eval_qM: {}, eval_qL: {}, eval_qR: {}, eval_qO: {}, eval_qC: {}", eval_qM, eval_qL, eval_qR, eval_qO, eval_qC);
-		// 	let eval_eq_tilde = eq_tilde.evaluate(&points[i]);
-		// 	println!("eval_eq_tilde: {}", eval_eq_tilde);
-		// 	//check for gate identity
-		// 	assert_eq!(eval_qM * eval_w1 * eval_w2 + eval_qL * eval_w1 + eval_qR * eval_w2 + eval_qO * eval_w3 + eval_qC, E::ScalarField::zero());
-		// 	let eval_v0 = v_0_tilde.evaluate(&points[i]);
-		// 	let eval_v1 = v_1_tilde.evaluate(&points[i]);
-		// 	let eval_u0 = u_0_tilde.evaluate(&points[i]);
-		// 	let eval_u1 = u_1_tilde.evaluate(&points[i]);
-		// 	let eval_sigma_1 = ckt.sigma_1.evaluate(&points[i]);
-		// 	let eval_sigma_2 = ckt.sigma_2.evaluate(&points[i]);
-		// 	let eval_sigma_3 = ckt.sigma_3.evaluate(&points[i]);
-		// 	let eval_id_1 = ckt.id_1.evaluate(&points[i]);
-		// 	let eval_id_2 = ckt.id_2.evaluate(&points[i]);
-		// 	let eval_id_3 = ckt.id_3.evaluate(&points[i]);
-		// 	assert_eq!(eval_v0 * (eval_w1 + beta * eval_sigma_1 + gamma) * (eval_w2 + beta * eval_sigma_2 + gamma) * (eval_w3 + beta * eval_sigma_3 + gamma) - (eval_w1 + beta * eval_id_1 + gamma) * (eval_w2 + beta * eval_id_2 + gamma) * (eval_w3 + beta * eval_id_3 + gamma), E::ScalarField::zero());
-		// 	assert_eq!(eval_v1 - eval_u0 * eval_u1, E::ScalarField::zero());
-		// }
-		// =====the check ends here===========================================
 
 		/* Deep copy or clone is done here, since we keep on squeezing the Boolean hypercube by replaing variables with randomly chosen field element one after another. 
 		But we require original multilinear polynomials (e.q., w1_tilde, w2_tilde, w3_tilde, v_0_tilde, v_1_tilde, u_0_tilde, u_1_tilde) later 
 		to generate evaluation proofs */
 
-		// let clone_time = start_timer!(|| format!("mlps clone"));
 		let mut w1_tilde_copy = w1_tilde.clone();
 		let mut w2_tilde_copy = w2_tilde.clone();
 		let mut w3_tilde_copy = w3_tilde.clone();
@@ -446,7 +350,6 @@ impl<E: Pairing> HyperPlonk<E> {
 		let mut v_1_tilde_copy = v_1_tilde.clone();
 		let mut u_0_tilde_copy = u_0_tilde.clone();
 		let mut u_1_tilde_copy = u_1_tilde.clone();
-		// end_timer!(clone_time);
 
 		let mut mlp_set = vec![&mut eq_tilde, &mut w1_tilde_copy, &mut w2_tilde_copy, &mut w3_tilde_copy,
 			 &mut qM_copy, &mut qL_copy, &mut qR_copy, &mut qO_copy, &mut qC_copy, 
@@ -456,9 +359,8 @@ impl<E: Pairing> HyperPlonk<E> {
 
 		let mut coeffs: Vec<_> = Vec::new();
 		let mut alphas: Vec<_> = Vec::new();
-		// let multivariate_sum_check_time = start_timer!(|| format!("multivariate sum check with number_of_rounds: {}", log_number_of_gates));
 		for i in 0..log_number_of_gates {
-			let d_plus_one_evaluation_points = util::sample_random_challenge_vector_from_transcript::<E>(&mut transcript, b"d_plus_one_evaluation_points", 6);
+			let d_plus_one_evaluation_points = (1..=5).map(|x| E::ScalarField::from(x as u64)).collect::<Vec<_>>();
 			if i > 0 {
 				let alpha = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha");
 				for mlp in mlp_set.iter_mut() {
@@ -475,9 +377,7 @@ impl<E: Pairing> HyperPlonk<E> {
 		}
 		let alpha_final = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha_final");
 		alphas.push(alpha_final);
-		// end_timer!(multivariate_sum_check_time);
 
-		// let mlps_eval_time = start_timer!(|| format!("mlps evaluation at alphas"));
 		let eval_w1_tilde_at_alphas = w1_tilde.evaluate(&alphas);
 		let eval_w2_tilde_at_alphas = w2_tilde.evaluate(&alphas);
 		let eval_w3_tilde_at_alphas = w3_tilde.evaluate(&alphas);
@@ -488,17 +388,12 @@ impl<E: Pairing> HyperPlonk<E> {
 		let eval_id1_at_alphas = ckt.id_1.evaluate(&alphas);
 		let eval_id2_at_alphas = ckt.id_2.evaluate(&alphas);
 		let eval_id3_at_alphas = ckt.id_3.evaluate(&alphas);
-		// end_timer!(mlps_eval_time);
 
-		// let combined_mlp_compute_time = start_timer!(|| format!("combined mlp compute"));
 		let combined_mlp = Self::compute_combined_mlp(log_number_of_gates, &ckt.qM, &ckt.qL, &ckt.qR, &ckt.qO, &ckt.qC, &v_0_tilde, &v_1_tilde, &u_1_tilde, eval_w1_tilde_at_alphas, eval_w2_tilde_at_alphas, eval_w3_tilde_at_alphas,
 							eval_u_0_tilde_at_alphas, eval_sigma1_at_alphas, eval_sigma2_at_alphas, eval_sigma3_at_alphas, eval_id1_at_alphas, eval_id2_at_alphas, eval_id3_at_alphas, &alphas, beta, gamma, xi, &tau);
-		// end_timer!(combined_mlp_compute_time);
 
-		// let combined_mlp_eval_prove_time = start_timer!(|| format!("combined mlp eval prove"));
 		let combined_mlp_eval = combined_mlp.evaluate(&alphas);
 		let combined_mlp_eval_proof = SamaritanMLPCS::<E>::prove(&srs, &combined_mlp, &alphas, combined_mlp_eval, &mut rng).unwrap();
-		// end_timer!(combined_mlp_eval_prove_time);
 
 		let proof = HyperPlonkProof{
 			num_rounds: log_number_of_gates,
@@ -540,6 +435,7 @@ impl<E: Pairing> HyperPlonk<E> {
 		let id3_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.id_3).unwrap();
 
 		// let verifier_time = start_timer!(|| format!("HyperPlonk::verify with multilinear polynomial"));
+
         let mut transcript = Transcript::new(b"HyperPlonk Transcript");
 
         let log_number_of_gates = proof.num_rounds;
@@ -559,24 +455,25 @@ impl<E: Pairing> HyperPlonk<E> {
 		let xi = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"xi");
 		let tau = util::sample_random_challenge_vector_from_transcript::<E>(&mut transcript, b"tau", log_number_of_gates);
 		let mut alphas: Vec<_> = Vec::new();
-		let mut prev_d_plus_one_evaluation_points: Vec<_> = Vec::new();
 		let mut cur_eval_value = E::ScalarField::zero();
+        let mut d_plus_one_evaluation_points = (1..=5).map(|x| E::ScalarField::from(x as u64)).collect::<Vec<_>>();
+        d_plus_one_evaluation_points.push(E::ScalarField::zero());
 		for i in 0..log_number_of_gates {
-			let d_plus_one_evaluation_points = util::sample_random_challenge_vector_from_transcript::<E>(&mut transcript, b"d_plus_one_evaluation_points", 6);
 			if i > 0 {
 				let alpha = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha");
 				alphas.push(alpha);
-				cur_eval_value = Self::compute_evaluation_through_lagrange_interpolation(&prev_d_plus_one_evaluation_points, &proof.coeffs[i-1], alpha);
+				let mut coeffs = proof.coeffs[i-1].clone();
+				coeffs.push(cur_eval_value - coeffs[0]);
+				cur_eval_value = Self::compute_evaluation_through_lagrange_interpolation(&d_plus_one_evaluation_points, &coeffs, alpha);
 			}
 			util::append_field_element_vector_to_transcript::<E>(&mut transcript, b"d_plus_one_evaluations", &proof.coeffs[i]);
-			let univariate_evaluated_at_zero = Self::compute_evaluation_through_lagrange_interpolation(&d_plus_one_evaluation_points, &proof.coeffs[i], E::ScalarField::zero());
-			let univariate_evaluated_at_one = Self::compute_evaluation_through_lagrange_interpolation(&d_plus_one_evaluation_points, &proof.coeffs[i], E::ScalarField::one());
-			assert_eq!(univariate_evaluated_at_zero + univariate_evaluated_at_one, cur_eval_value);
-			prev_d_plus_one_evaluation_points = d_plus_one_evaluation_points;
 		}
 		let alpha_final = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha_final");
-		cur_eval_value = Self::compute_evaluation_through_lagrange_interpolation(&prev_d_plus_one_evaluation_points, &proof.coeffs[log_number_of_gates-1], alpha_final);
+		let mut final_poly_coeffs = proof.coeffs[log_number_of_gates-1].clone();
+		final_poly_coeffs.push(cur_eval_value- final_poly_coeffs[0]);
+		cur_eval_value = Self::compute_evaluation_through_lagrange_interpolation(&d_plus_one_evaluation_points, &final_poly_coeffs, alpha_final);
 		alphas.push(alpha_final);
+
 		let eval_eq_tilde_at_alphas = Self::evaluate_eq_tilde_at_point(log_number_of_gates, &tau, &alphas);
 		let comm_list = vec![qM_comm.0, qL_comm.0, qR_comm.0, qO_comm.0, qC_comm.0, proof.v_0_tilde_commit.0, proof.v_1_tilde_commit.0, proof.u_1_tilde_commit.0];
 		let scalar_list = vec![eval_eq_tilde_at_alphas * proof.eval_w1_tilde_at_alphas * proof.eval_w2_tilde_at_alphas, eval_eq_tilde_at_alphas * proof.eval_w1_tilde_at_alphas, eval_eq_tilde_at_alphas * proof.eval_w2_tilde_at_alphas, eval_eq_tilde_at_alphas * proof.eval_w3_tilde_at_alphas, eval_eq_tilde_at_alphas,
@@ -595,7 +492,6 @@ impl<E: Pairing> HyperPlonk<E> {
 #[cfg(test)]
 mod tests {
     #![allow(non_camel_case_types)]
-    // use ark_poly_commit::kzg10::*;
     use ark_poly_commit::*;
     use ark_ec::pairing::Pairing;
     use ark_bls12_381::Bls12_381;
@@ -616,80 +512,14 @@ mod tests {
     #[test]
     fn functionality_test(){
     	let mut rng = &mut test_rng();
-    // 	let log_number_of_gates: usize = 3;
-    // 	let number_of_gates = 2usize.pow(log_number_of_gates as u32);
-    // 	let number_of_wires: usize = 3 * number_of_gates;
-    // 	let srs = SamaritanMLPCS_Bls12_381::setup(log_number_of_gates, &mut rng).unwrap();
-
-    // 	let evaluation_vec_L = [Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64)].to_vec();
-    // 	let evaluation_vec_R = [Fr::from(1 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64)].to_vec();
-    // 	let evaluation_vec_O = [-Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64), -Fr::from(1 as u64)].to_vec();
-    // 	let evaluation_vec_M = [Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64), Fr::from(1 as u64), Fr::from(0 as u64)].to_vec();
-    // 	let evaluation_vec_C = [Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64), Fr::from(0 as u64)].to_vec();
-    	
-    // 	// let mut sigma: Vec<usize> = (1..=number_of_wires).collect();
-    // 	// sigma.shuffle(&mut rng);
-	// 	// let sigma_1_vec = sigma[..number_of_gates].into_iter().map(|i| Fr::from(*i as u64)).collect();
-	// 	// let sigma_2_vec = sigma[number_of_gates..2*number_of_gates].into_iter().map(|i| Fr::from(*i as u64)).collect();
-	// 	// let sigma_3_vec = sigma[2*number_of_gates..].into_iter().map(|i| Fr::from(*i as u64)).collect();
-
-	// 	let sigma_1_vec = [Fr::from(1 as u64), Fr::from(2 as u64), Fr::from(3 as u64), Fr::from(4 as u64), Fr::from(17 as u64), Fr::from(18 as u64), Fr::from(21 as u64), Fr::from(23 as u64)].to_vec();
-	// 	let sigma_2_vec = [Fr::from(9 as u64), Fr::from(10 as u64), Fr::from(11 as u64), Fr::from(12 as u64), Fr::from(6 as u64), Fr::from(19 as u64), Fr::from(22 as u64), Fr::from(20 as u64)].to_vec();
-	// 	let sigma_3_vec = [Fr::from(5 as u64), Fr::from(13 as u64), Fr::from(14 as u64), Fr::from(16 as u64), Fr::from(7 as u64), Fr::from(15 as u64), Fr::from(8 as u64), Fr::from(24 as u64)].to_vec();
-	// 	// println!("sigma_1_vec: {:?}", sigma_1_vec);
-	// 	// println!("sigma_2_vec: {:?}", sigma_2_vec);
-	// 	// println!("sigma_3_vec: {:?}", sigma_3_vec);
-    // 	let sigma_1 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, sigma_1_vec);
-    // 	let sigma_2 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, sigma_2_vec);
-    // 	let sigma_3 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, sigma_3_vec);
-
-    // 	let id_1_vec = (1..=number_of_gates).map(|i| Fr::from(i as u64)).collect();
-    // 	let id_2_vec = ((number_of_gates+1)..=(2*number_of_gates)).map(|i| Fr::from(i as u64)).collect();
-    // 	let id_3_vec = ((2*number_of_gates+1)..=(3*number_of_gates)).map(|i| Fr::from(i as u64)).collect();
-    // 	// println!("id_1_vec: {:?}", id_1_vec);
-	// 	// println!("id_2_vec: {:?}", id_2_vec);
-	// 	// println!("id_3_vec: {:?}", id_3_vec);
-	// 	let id_1 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, id_1_vec);
-    // 	let id_2 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, id_2_vec);
-    // 	let id_3 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, id_3_vec);
-
-    // 	let myckt = HyperPlonkCircuit::<Bls12_381>{
-    // 		log_number_of_gates,
-    // 		number_of_wires,
-    // 		qL: DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, evaluation_vec_L),
-    // 		qR: DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, evaluation_vec_R),
-    // 		qO: DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, evaluation_vec_O),
-    // 		qM: DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, evaluation_vec_M),
-    // 		qC: DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, evaluation_vec_C),
-    // 		sigma_1,
-    // 		sigma_2,
-    // 		sigma_3,
-    // 		id_1,
-    // 		id_2,
-    // 		id_3,
-    // 	};
-
-    // 	let w1_vec = [Fr::from(2 as u64), Fr::from(3 as u64), Fr::from(1 as u64), Fr::from(2 as u64), Fr::from(3 as u64), Fr::from(5 as u64), Fr::from(15 as u64), Fr::from(135 as u64)].to_vec();
-    // 	let w2_vec = [Fr::from(1 as u64), Fr::from(2 as u64), Fr::from(4 as u64), Fr::from(2 as u64), Fr::from(5 as u64), Fr::from(4 as u64), Fr::from(9 as u64), Fr::from(4 as u64)].to_vec();
-    // 	let w3_vec = [Fr::from(3 as u64), Fr::from(5 as u64), Fr::from(4 as u64), Fr::from(4 as u64), Fr::from(15 as u64), Fr::from(9 as u64), Fr::from(135 as u64), Fr::from(139 as u64)].to_vec();
-    // 	let w1 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, w1_vec);
-    // 	let w2 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, w2_vec);
-    // 	let w3 = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, w3_vec);
-
-    	// let hyperplonk_proof = HyperPlonk_Bls12_381::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
-    	// let valid = HyperPlonk_Bls12_381::verify(&hyperplonk_proof, &myckt, &srs).unwrap();
-    	// assert_eq!(valid, true);
-    // }
-
     	// n is the dimension of each of the two vectors (A and B) participating in inner product. (2*n) is the number of gates in the circuit. 2^(n+1) is the size of 
     	// evaluation vecs of each mlp. In short #vars = (n + 1).
-		let n: usize = 1 << 15;
+		let n: usize = 1 << 14;
 		let mut rng = &mut test_rng();
 		let A: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
 		let B: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
-		// println!("A: {:?}, B: {:?}", A, B);
+
 		let myckt: HyperPlonkCircuit::<Bls12_381> = HyperPlonk_Bls12_381::generate_circuit_for_inner_product(&A, &B, n);
-		// println!("myckt: {:?}", myckt);
 
 		let mut w1_vec: Vec<_> = Vec::new();
 		let mut w2_vec: Vec<_> = Vec::new();
@@ -717,10 +547,6 @@ mod tests {
 			w3_vec.push(w1_vec[n + i] + w2_vec[n + i]);
 		}
 
-		// println!("w1_vec: {:?}", w1_vec);
-		// println!("w2_vec: {:?}", w2_vec);
-		// println!("w3_vec: {:?}", w3_vec);
-
 		let w1 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w1_vec);
 		let w2 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w2_vec);
 		let w3 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w3_vec);
@@ -728,6 +554,7 @@ mod tests {
 		let srs = SamaritanMLPCS_Bls12_381::setup(myckt.log_number_of_gates, &mut rng).unwrap();
 		let hyperplonk_proof = HyperPlonk_Bls12_381::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
     	let valid = HyperPlonk_Bls12_381::verify(&hyperplonk_proof, &myckt, &srs).unwrap();
+
         assert_eq!(valid, true);
     }
 
