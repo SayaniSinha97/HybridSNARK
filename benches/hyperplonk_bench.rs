@@ -70,7 +70,10 @@ fn prove_benchmark(c: &mut Criterion) {
     let w2 = DenseMultilinearExtension::from_evaluations_vec(num_vars, w2_vec);
     let w3 = DenseMultilinearExtension::from_evaluations_vec(num_vars, w3_vec);
 
-    let srs = SamaritanMLPCS_Bls12_381::setup(num_vars, &mut rng).unwrap();
+    let (srs, 
+            qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+            sigma1_comm, sigma2_comm, sigma3_comm, 
+            id1_comm, id2_comm, id3_comm) = HyperPlonk_Bls12_381::setup(&myckt, &mut rng).unwrap();
 
     let name = format!("HyperPlonk_prove_{}", num_vars);
     group.bench_function(&name, move |b| {
@@ -123,13 +126,20 @@ fn verify_benchmark(c: &mut Criterion) {
     let w2 = DenseMultilinearExtension::from_evaluations_vec(num_vars, w2_vec);
     let w3 = DenseMultilinearExtension::from_evaluations_vec(num_vars, w3_vec);
 
-    let srs = SamaritanMLPCS_Bls12_381::setup(num_vars, &mut rng).unwrap();
+    let (srs, 
+            qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+            sigma1_comm, sigma2_comm, sigma3_comm, 
+            id1_comm, id2_comm, id3_comm) = HyperPlonk_Bls12_381::setup(&myckt, &mut rng).unwrap();
+
     let hyperplonk_proof = HyperPlonk_Bls12_381::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
 
     let name = format!("HyperPlonk_verify_{}", num_vars);
     group.bench_function(&name, move |b| {
       b.iter(|| {
-        HyperPlonk_Bls12_381::verify(&hyperplonk_proof, &myckt, &srs).unwrap();
+        HyperPlonk_Bls12_381::verify(&hyperplonk_proof, &myckt, &srs,
+        qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+            sigma1_comm, sigma2_comm, sigma3_comm, 
+            id1_comm, id2_comm, id3_comm).unwrap();
       });
     });
     group.finish();

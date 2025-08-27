@@ -1,3 +1,4 @@
+use std::time::Instant;
 use ark_poly_commit::kzg10::*;
 use ark_poly_commit::*;
 use ark_ec::pairing::Pairing;
@@ -90,19 +91,28 @@ pub fn run_hyperplonk(num_vars: usize) {
     let w2 = DenseMultilinearExtension::from_evaluations_vec(num_vars, w2_vec);
     let w3 = DenseMultilinearExtension::from_evaluations_vec(num_vars, w3_vec);
 
-    let srs = SamaritanMLPCS_Bls12_381::setup(num_vars, &mut rng).unwrap();
+    let (srs, 
+            qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+            sigma1_comm, sigma2_comm, sigma3_comm, 
+            id1_comm, id2_comm, id3_comm) = HyperPlonk_Bls12_381::setup(&myckt, &mut rng).unwrap();
 
     let hyperplonk_prover_time = start_timer!(|| format!("HyperPlonk::prove with log_number_of_gates {}", num_vars));
     let hyperplonk_proof = HyperPlonk_Bls12_381::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
     end_timer!(hyperplonk_prover_time);
 
     let hyperplonk_verifier_time = start_timer!(|| format!("HyperPlonk::verify with multilinear polynomial"));
-    let valid = HyperPlonk_Bls12_381::verify(&hyperplonk_proof, &myckt, &srs).unwrap();
+    let valid = HyperPlonk_Bls12_381::verify(&hyperplonk_proof, &myckt, &srs,
+        qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+            sigma1_comm, sigma2_comm, sigma3_comm, 
+            id1_comm, id2_comm, id3_comm).unwrap();
     end_timer!(hyperplonk_verifier_time);
 
     // let srs = SamaritanMLPCS_Bn254::setup(num_vars, &mut rng).unwrap();
     // let hyperplonk_proof = HyperPlonk_Bn254::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
-    // let valid = HyperPlonk_Bn254::verify(&hyperplonk_proof, &myckt, &srs).unwrap();
+    // let valid = HyperPlonk_Bn254::verify(&hyperplonk_proof, &myckt, &srs,
+        // qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+        //     sigma1_comm, sigma2_comm, sigma3_comm, 
+        //     id1_comm, id2_comm, id3_comm).unwrap();
 
     assert_eq!(valid, true);
 }
@@ -145,19 +155,28 @@ pub fn run_hybridplonk(num_vars: usize) {
     let w2 = DenseMultilinearExtension::from_evaluations_vec(num_vars, w2_vec);
     let w3 = DenseMultilinearExtension::from_evaluations_vec(num_vars, w3_vec);
 
-    let srs = SamaritanMLPCS_Bls12_381::setup(num_vars, &mut rng).unwrap();
+    let (srs, 
+            qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+            sigma1_comm, sigma2_comm, sigma3_comm, 
+            id1_comm, id2_comm, id3_comm) = HybridPlonk_Bls12_381::setup(&myckt, &mut rng).unwrap();
 
     let hybridplonk_prover_time = start_timer!(|| format!("HybridPlonk::prove with log_number_of_gates {}", num_vars));
     let hybridplonk_proof = HybridPlonk_Bls12_381::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
     end_timer!(hybridplonk_prover_time);
 
     let hybridplonk_verifier_time = start_timer!(|| format!("HybridPlonk::verify with multilinear polynomial"));
-    let valid = HybridPlonk_Bls12_381::verify(&hybridplonk_proof, &myckt, &srs).unwrap();
+    let valid = HybridPlonk_Bls12_381::verify(&hybridplonk_proof, &myckt, &srs,
+        qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+            sigma1_comm, sigma2_comm, sigma3_comm, 
+            id1_comm, id2_comm, id3_comm).unwrap();
     end_timer!(hybridplonk_verifier_time);
 
     // let srs = SamaritanMLPCS_Bn254::setup(num_vars, &mut rng).unwrap();
     // let hybridplonk_proof = HybridPlonk_Bn254::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
-    // let valid = HybridPlonk_Bn254::verify(&hybridplonk_proof, &myckt, &srs).unwrap();
+    // let valid = HybridPlonk_Bn254::verify(&hybridplonk_proof, &myckt, &srs,
+        // qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+        //     sigma1_comm, sigma2_comm, sigma3_comm, 
+        //     id1_comm, id2_comm, id3_comm).unwrap();
 
     assert_eq!(valid, true);
 }

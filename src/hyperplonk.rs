@@ -10,7 +10,7 @@ use ark_poly::evaluations::multivariate::multilinear::DenseMultilinearExtension;
 use ark_std::{start_timer, end_timer, Zero, One, marker::PhantomData};
 use ark_std::{UniformRand};
 use ark_std::rand::rngs::StdRng;
-use ark_std::rand::SeedableRng;
+use ark_std::rand::{SeedableRng, RngCore};
 use merlin::Transcript;
 use ark_ff::BigInteger;
 use ark_ff::PrimeField;
@@ -140,6 +140,28 @@ impl<E: Pairing> HyperPlonk<E> {
     		id_3: DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, id_3_vec),
     	};
     	myckt
+	}
+
+	pub fn setup<R: RngCore>(ckt: &HyperPlonkCircuit<E>, rng: &mut R) -> Result<(SamaritanMLPCS_SRS<E>, Commitment<E>, Commitment<E>, Commitment<E>, Commitment<E>, Commitment<E>,
+		Commitment<E>, Commitment<E>, Commitment<E>, Commitment<E>, Commitment<E>, Commitment<E>), Error> {
+		let srs = SamaritanMLPCS::<E>::setup(ckt.log_number_of_gates, rng).unwrap();
+
+    	// some pre-computations done during setup, used later by the verifier
+		let qM_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qM).unwrap();
+		let qL_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qL).unwrap();
+		let qR_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qR).unwrap();
+		let qO_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qO).unwrap();
+		let qC_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qC).unwrap();
+		let sigma1_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.sigma_1).unwrap();
+		let sigma2_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.sigma_2).unwrap();
+		let sigma3_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.sigma_3).unwrap();
+		let id1_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.id_1).unwrap();
+		let id2_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.id_2).unwrap();
+		let id3_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.id_3).unwrap();
+
+		Ok((srs, qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+        	sigma1_comm, sigma2_comm, sigma3_comm, 
+        	id1_comm, id2_comm, id3_comm))
 	}
 
 	pub(crate) fn compute_eq_tilde(log_number_of_gates: usize, tau: &Vec<E::ScalarField>) -> DenseMultilinearExtension<E::ScalarField> {
@@ -421,19 +443,10 @@ impl<E: Pairing> HyperPlonk<E> {
 		Ok(proof)
 	}
 
-	pub fn verify(proof: &HyperPlonkProof<E>, ckt: &HyperPlonkCircuit<E>, srs: &SamaritanMLPCS_SRS<E>) -> Result<bool, Error> {
-		let qM_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qM).unwrap();
-		let qL_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qL).unwrap();
-		let qR_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qR).unwrap();
-		let qO_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qO).unwrap();
-		let qC_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.qC).unwrap();
-		let sigma1_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.sigma_1).unwrap();
-		let sigma2_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.sigma_2).unwrap();
-		let sigma3_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.sigma_3).unwrap();
-		let id1_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.id_1).unwrap();
-		let id2_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.id_2).unwrap();
-		let id3_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &ckt.id_3).unwrap();
-
+	pub fn verify(proof: &HyperPlonkProof<E>, ckt: &HyperPlonkCircuit<E>, srs: &SamaritanMLPCS_SRS<E>,
+		qM_comm: Commitment<E>, qL_comm: Commitment<E>, qR_comm: Commitment<E>, qO_comm: Commitment<E>, qC_comm:Commitment<E>, 
+        	sigma1_comm: Commitment<E>, sigma2_comm: Commitment<E>, sigma3_comm: Commitment<E>, 
+        	id1_comm: Commitment<E>, id2_comm: Commitment<E>, id3_comm: Commitment<E>) -> Result<bool, Error> {
 		// let verifier_time = start_timer!(|| format!("HyperPlonk::verify with multilinear polynomial"));
 
         let mut transcript = Transcript::new(b"HyperPlonk Transcript");
@@ -551,9 +564,17 @@ mod tests {
 		let w2 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w2_vec);
 		let w3 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w3_vec);
 
-		let srs = SamaritanMLPCS_Bls12_381::setup(myckt.log_number_of_gates, &mut rng).unwrap();
+		let (srs, 
+    		qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+        	sigma1_comm, sigma2_comm, sigma3_comm, 
+        	id1_comm, id2_comm, id3_comm) = HyperPlonk_Bls12_381::setup(&myckt, &mut rng).unwrap();
+
 		let hyperplonk_proof = HyperPlonk_Bls12_381::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
-    	let valid = HyperPlonk_Bls12_381::verify(&hyperplonk_proof, &myckt, &srs).unwrap();
+
+    	let valid = HyperPlonk_Bls12_381::verify(&hyperplonk_proof, &myckt, &srs, 
+        	qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+        	sigma1_comm, sigma2_comm, sigma3_comm, 
+        	id1_comm, id2_comm, id3_comm).unwrap();
 
         assert_eq!(valid, true);
     }
