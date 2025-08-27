@@ -29,9 +29,9 @@ cargo run --release -- 3 16
 will produce timing output for HybridPlonk with 16 variables as following:
 ```
 Start:   HybridPlonk::prove with log_number_of_gates 16
-··End:     HybridPlonk::prove with log_number_of_gates 16 ..........................4.190s
+··End:     HybridPlonk::prove with log_number_of_gates 16 ..........................4.022s
 Start:   HybridPlonk::verify with multilinear polynomial
-··End:     HybridPlonk::verify with multilinear polynomial .........................629.082ms
+··End:     HybridPlonk::verify with multilinear polynomial .........................17.028ms
 ```
 
 # Run benchmarks
@@ -44,37 +44,34 @@ Similarly, to run the benchmark for hybridplonk, please run:
 ```
 RUSTFLAGS="-C target_cpu=native" cargo bench --bench hybridplonk_bench
 ```
-The output of running benchmarks looks like this (considering num_vars in {14,16}):
+The output of running benchmarks looks like this (considering num_vars in {14,16}), indicating prover time and verifier time of HybridPlonk to be 1.193s and 17.517ms for num_vars=14, and 4.533s and 17.713ms for num_vars=16:
 ```
 Benchmarking HybridPlonk_prove_benchmark/HybridPlonk_prove_14: Warming up for 3.0000 s
-Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 10.9s.
+Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 11.7s.
 HybridPlonk_prove_benchmark/HybridPlonk_prove_14
-                        time:   [1.0972 s 1.1038 s 1.1099 s]
-                        change: [-18.449% -17.368% -16.413%] (p = 0.00 < 0.05)
-                        Performance has improved.
+                        time:   [1.1805 s 1.1929 s 1.2059 s]
+                        change: [+0.0502% +1.2481% +2.5931%] (p = 0.10 > 0.05)
+                        No change in performance detected.
 
 Benchmarking HybridPlonk_prove_benchmark/HybridPlonk_prove_16: Warming up for 3.0000 s
-Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 39.8s.
+Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 44.5s.
 HybridPlonk_prove_benchmark/HybridPlonk_prove_16
-                        time:   [3.9564 s 3.9698 s 3.9836 s]
-                        change: [-21.452% -19.672% -17.830%] (p = 0.00 < 0.05)
-                        Performance has improved.
+                        time:   [4.4856 s 4.5327 s 4.5738 s]
+                        change: [-0.1069% +1.3935% +2.9308%] (p = 0.09 > 0.05)
+                        No change in performance detected.
 Found 2 outliers among 10 measurements (20.00%)
-  1 (10.00%) low mild
-  1 (10.00%) high mild
+  2 (20.00%) low mild
 
-Benchmarking HybridPlonk_verify_benchmark/HybridPlonk_verify_14: Warming up for 3.0000 s
-Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 9.8s or enable flat sampling.
 HybridPlonk_verify_benchmark/HybridPlonk_verify_14
-                        time:   [171.83 ms 175.09 ms 179.20 ms]
-                        change: [-21.902% -19.959% -17.935%] (p = 0.00 < 0.05)
+                        time:   [17.415 ms 17.517 ms 17.677 ms]
+                        change: [-91.551% -91.411% -91.256%] (p = 0.00 < 0.05)
                         Performance has improved.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
 
-Benchmarking HybridPlonk_verify_benchmark/HybridPlonk_verify_16: Warming up for 3.0000 s
-Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 6.2s.
 HybridPlonk_verify_benchmark/HybridPlonk_verify_16
-                        time:   [603.51 ms 609.28 ms 615.01 ms]
-                        change: [-18.695% -17.750% -16.815%] (p = 0.00 < 0.05)
+                        time:   [17.501 ms 17.713 ms 17.902 ms]
+                        change: [-97.497% -97.463% -97.426%] (p = 0.00 < 0.05)
                         Performance has improved.
 ```
 By default, the benchmarks run for num_vars in {10, 12, 14, 16, 20}. One can change the values in the files benches/hyperplonk.rs or benches/hybridplonk.rs. Note that, benchmarking for higher values may take longer, since it considers multiple runs to provide the average. However, for higher values of num_vars one can check the output of ``cargo run --release -- <mode> <num_vars>``, which shows the timings of a single run.
