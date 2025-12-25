@@ -347,7 +347,7 @@ impl<E: Pairing> SamaritanMLPCS<E>
         //the v_i's, where v_i = g_i(z_x) = f(z_x, <i>) for all i\in[l]
         let g_evaluation_values: Vec<_> = Self::get_evaluation_set(&multi_linear_poly, &point, kappa as usize, nu as usize);
 
-        //the polynomial v(x)=\sum_{i=1}^l \gamma^{i-1}v_i
+        //the polynomial v(x)=\sum_{i=1}^l X^{i-1}v_i
         let v_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(g_evaluation_values);
 
         //commit to v(x)

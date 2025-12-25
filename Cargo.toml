@@ -22,3 +22,11 @@ harness = false
 [[bench]]
 name = "hybridplonk_bench"
 harness = false
+
+[[bench]]
+name = "vanilla_sumcheck_bench"
+harness = false
+
+[[bench]]
+name = "improved_sumcheck_bench"
+harness = false
