@@ -76,3 +76,5 @@ HybridPlonk_verify_benchmark/HybridPlonk_verify_16
 ```
 By default, the benchmarks run for num_vars in {10, 12, 14, 16, 20}. One can change the values in the files benches/hyperplonk.rs or benches/hybridplonk.rs. Note that, benchmarking for higher values may take longer, since it considers multiple runs to provide the average. However, for higher values of num_vars one can check the output of ``cargo run --release -- <mode> <num_vars>``, which shows the timings of a single run.
 
+Please note that the outputs in the sample run, as provided above, are just some representative numbers. The actual benchmark values provided in the submitted papper are from a different system (System 76 Adder Workstation), as specified in the paper.
+
