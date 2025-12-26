@@ -220,7 +220,7 @@ impl<E: Pairing> HybridPlonk<E> {
 
 		let mut first = E::ScalarField::one();
 		for i in 0..log_number_of_gates {
-			first *= E::ScalarField::one() - tau[i];
+			first *= one_minus_tau[i];
 		}
 		let mut evals: Vec<E::ScalarField> = vec![first; number_of_gates];
 		let mut bit_seq: Vec<i8> = vec![0; log_number_of_gates];
@@ -433,8 +433,9 @@ impl<E: Pairing> HybridPlonk<E> {
 
 		let mut A_hat_coeffs : Vec<_> = Vec::new();
 		for i in 0..m {
-			A_hat_coeffs.push(A_hat_evals_at_roots_of_unity_inv[i].inverse().unwrap());
+			A_hat_coeffs.push(A_hat_evals_at_roots_of_unity_inv[i]);
 		}
+		batch_inversion(&mut A_hat_coeffs);
 		let A_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(A_hat_coeffs);
 		A_hat
 	}
@@ -442,8 +443,10 @@ impl<E: Pairing> HybridPlonk<E> {
 	pub(crate) fn compute_B_hat_delta_coeffs(A_hat: &DensePolynomial<E::ScalarField>, delta: E::ScalarField, m: usize) -> Vec<E::ScalarField> {
 		let mut B_hat_delta_coeffs : Vec<_> = Vec::new();
 		let A_hat_coeffs = A_hat.coeffs().to_vec();
+		let mut A_hat_coeffs_inverse = A_hat_coeffs.clone();
+		batch_inversion(&mut A_hat_coeffs_inverse);
 		for i in 0..m {
-			B_hat_delta_coeffs.push(A_hat_coeffs[i].inverse().unwrap() * delta.pow(&[i as u64]));
+			B_hat_delta_coeffs.push(A_hat_coeffs_inverse[i] * delta.pow(&[i as u64]));
 		}
 		B_hat_delta_coeffs
 	}
@@ -547,6 +550,107 @@ impl<E: Pairing> HybridPlonk<E> {
 		let t_hat_mlp = d_hat + new_term_1 + new_term_2 + new_term_3 + new_term_4 + new_term_5 + new_term_6 + new_term_7;
 
 		t_hat_mlp
+	}
+
+	pub(crate) fn compute_d_hat_commit(srs: &SamaritanMLPCS_SRS<E>, u_0_tilde_commit: &Commitment<E>, u_1_tilde_commit: &Commitment<E>, 
+										v_0_tilde_commit: &Commitment<E>, v_1_tilde_commit: &Commitment<E>,
+	    								K_hat: &DensePolynomial<E::ScalarField>, h_hat: &DensePolynomial<E::ScalarField>, 
+	    								epsilon: E::ScalarField, number_of_gates: usize, m: usize) -> Commitment<E> {
+		let K_hat_right_shifted_commit: Commitment<E> = Commitment(E::G1::msm(&srs.powers_of_g[(number_of_gates - m)..(number_of_gates - m + &K_hat.coeffs().len())], &K_hat.coeffs()).unwrap().into_affine());
+		let h_hat_right_shifted_commit: Commitment<E> = Commitment(E::G1::msm(&srs.powers_of_g[(number_of_gates - m + 1)..(number_of_gates - m + 1 + &h_hat.coeffs().len())], &h_hat.coeffs()).unwrap().into_affine());
+		
+		Commitment(E::G1::msm(&vec![u_0_tilde_commit.0, u_1_tilde_commit.0, v_0_tilde_commit.0, v_1_tilde_commit.0, K_hat_right_shifted_commit.0, h_hat_right_shifted_commit.0],
+			&vec![E::ScalarField::one(), epsilon, epsilon.pow(&[2 as u64]), epsilon.pow(&[3 as u64]), epsilon.pow(&[4 as u64]), epsilon.pow(&[5 as u64])]).unwrap().into_affine())
+	}
+
+	pub fn compute_K_ext_hat_commit(srs: &SamaritanMLPCS_SRS<E>, K_hat: &DensePolynomial<E::ScalarField>, number_of_initial_rounds: usize) -> Commitment<E> {
+		let mut modified_bases = Vec::new();
+		let rep_count = 1 << number_of_initial_rounds;
+		for i in 0..K_hat.coeffs().len() {
+			let mut tmp = E::G1::zero();
+			for j in &srs.powers_of_g[(i * rep_count)..((i+1) * rep_count)] {
+				tmp += j;
+			}
+			modified_bases.push(tmp.into_affine());
+		}
+		Commitment(E::G1::msm(&modified_bases, &K_hat.coeffs()).unwrap().into_affine())
+	}
+
+	pub fn compute_t_hat_mlp_and_its_commit(srs: &SamaritanMLPCS_SRS<E>, u0_hat: &DensePolynomial<E::ScalarField>, u0_hat_commit: &Commitment<E>, 
+												u1_hat: &DensePolynomial<E::ScalarField>, u1_hat_commit: &Commitment<E>,
+												v0_hat: &DensePolynomial<E::ScalarField>, v0_hat_commit: &Commitment<E>,
+												v1_hat: &DensePolynomial<E::ScalarField>, v1_hat_commit: &Commitment<E>,
+												K_hat: &DensePolynomial<E::ScalarField>, h_hat: &DensePolynomial<E::ScalarField>, 
+	        									v_psi_phi_combined_mlp: &DensePolynomial<E::ScalarField>, b_hat_mlp: &DensePolynomial<E::ScalarField>, 
+        										p_psi_combined_mlp: &DensePolynomial<E::ScalarField>, u_hat_mlp: &DensePolynomial<E::ScalarField>,
+        										f_hat_mlp: &DensePolynomial<E::ScalarField>, p_hat_mlp: &DensePolynomial<E::ScalarField>,
+												eval: E::ScalarField, v_gamma: E::ScalarField, alpha: E::ScalarField, gamma: E::ScalarField, epsilon: E::ScalarField, 
+												number_of_gates: usize, m: usize, l_: usize, m_: usize) -> (DensePolynomial<E::ScalarField>, Commitment<E>) {
+		let K_hat_right_shifted_commit: Commitment<E> = Commitment(E::G1::msm(&srs.powers_of_g[(number_of_gates - m)..(number_of_gates - m + &K_hat.coeffs().len())], &K_hat.coeffs()).unwrap().into_affine());
+		let h_hat_right_shifted_commit: Commitment<E> = Commitment(E::G1::msm(&srs.powers_of_g[(number_of_gates - m + 1)..(number_of_gates - m + 1 + &h_hat.coeffs().len())], &h_hat.coeffs()).unwrap().into_affine());
+
+
+		let simple_term_1 = u0_hat + u1_hat * epsilon + v0_hat * epsilon.pow(&[2 as u64]) + v1_hat * epsilon.pow(&[3 as u64])
+								+ &DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); number_of_gates - m], K_hat.coeffs().to_vec()].concat().to_vec()) * epsilon.pow(&[4 as u64])
+								+ &DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); number_of_gates - m + 1], h_hat.coeffs().to_vec()].concat().to_vec()) * epsilon.pow(&[5 as u64]);
+		// let timer1 = start_timer!(|| format!("simple terms 1 commit"));
+		let simple_term_1_commit: Commitment<E> = Commitment(E::G1::msm(&vec![u0_hat_commit.0, u1_hat_commit.0, v0_hat_commit.0, v1_hat_commit.0, K_hat_right_shifted_commit.0, h_hat_right_shifted_commit.0],
+			&vec![E::ScalarField::one(), epsilon, epsilon.pow(&[2 as u64]), epsilon.pow(&[3 as u64]), epsilon.pow(&[4 as u64]), epsilon.pow(&[5 as u64])]).unwrap().into_affine());
+		// end_timer!(timer1);
+		// println!("simple_term_1 len : {}", &simple_term_1.len());
+
+		let mid_term1 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); l_ - 1], vec![E::ScalarField::from(eval + (alpha * v_gamma))]].concat());
+        let mut simple_term_2 = (v_psi_phi_combined_mlp - &mid_term1 - b_hat_mlp) * epsilon.pow(&[6 as u64]);
+        simple_term_2 = DensePolynomial::<E::ScalarField>::from_coefficients_vec(simple_term_2.coeffs()[l_..].to_vec());
+        // println!("simple_term_2 len : {}", &simple_term_2.len());
+
+        let mid_term2 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); m_ - 1], vec![E::ScalarField::from(v_gamma)]].concat());
+        let mut simple_term_3 = (p_psi_combined_mlp - &mid_term2 - u_hat_mlp) * epsilon.pow(&[7 as u64]);
+        simple_term_3 = DensePolynomial::<E::ScalarField>::from_coefficients_vec(simple_term_3.coeffs()[m_..].to_vec());
+        // println!("simple_term_3 len : {}", &simple_term_3.len());
+
+        let mut simple_term_4 = (f_hat_mlp - p_hat_mlp) * epsilon.pow(&[8 as u64]);
+        let mut term_coeffs = (&simple_term_4).coeffs.clone();
+        for i in (m_..term_coeffs.len()).rev() {
+            let quotient = term_coeffs[i];
+            term_coeffs[i - m_] += quotient * gamma;
+        }
+
+        // println!("term_coeffs len : {}", &term_coeffs.len());
+        term_coeffs = term_coeffs[m_..].to_vec();//  truncate(third_term_coeffs.len() - m_);
+        // println!("term_coeffs len : {}", &term_coeffs.len());
+        simple_term_4 = DensePolynomial::<E::ScalarField>::from_coefficients_vec(term_coeffs);
+        // println!("simple_term_4 len : {}", &simple_term_4.len());
+
+        let simple_term_5 = f_hat_mlp * epsilon.pow(&[9 as u64]);
+
+        let simple_terms_combined_long = &simple_term_4 + &simple_term_5;
+        // println!("simple_terms_combined_long len: {}", simple_terms_combined_long.coeffs().len());
+        // let timer2 = start_timer!(|| format!("simple terms long commit"));
+        let simple_terms_combined_long_commit: Commitment<E> = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &simple_terms_combined_long).unwrap();
+        // end_timer!(timer2);
+
+        let mut simple_term_6 = p_hat_mlp * epsilon.pow(&[10 as u64]);
+        simple_term_6 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); (m_ * l_) - m_], (&simple_term_6).coeffs().to_vec()].concat());
+
+        let mut simple_term_7 = u_hat_mlp * epsilon.pow(&[11 as u64]);
+        simple_term_7 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); (m_ * l_) - m_ + 1], (&simple_term_7).coeffs().to_vec()].concat());
+
+		let mut simple_term_8 = b_hat_mlp * epsilon.pow(&[12 as u64]);
+        simple_term_8 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); (m_ * l_) - l_ + 1], (&simple_term_8).coeffs().to_vec()].concat());
+
+        let t_hat_mlp = &simple_term_1 + &simple_term_2 + &simple_term_3 + &simple_term_4 + &simple_term_5 + &simple_term_6 + &simple_term_7 + &simple_term_8;
+
+        let simple_terms_combined = &simple_term_2 + simple_term_3 + simple_term_6 + simple_term_7 + simple_term_8;
+        // println!("simple_terms_combined len: {}", simple_terms_combined.coeffs().len());
+
+        // let timer3 = start_timer!(|| format!("simple terms commit"));
+        let simple_terms_combined_commit: Commitment<E> = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &simple_terms_combined).unwrap();
+        // end_timer!(timer3);
+        
+        let t_hat_mlp_commit: Commitment<E> = Commitment((simple_term_1_commit.0 + simple_terms_combined_long_commit.0 + simple_terms_combined_commit.0).into_affine());
+
+		(t_hat_mlp, t_hat_mlp_commit)
 	}
 
 	pub fn prove(ckt: &HybridPlonkCircuit<E>, w1_tilde: &DenseMultilinearExtension<E::ScalarField>, w2_tilde: &DenseMultilinearExtension<E::ScalarField>, w3_tilde: &DenseMultilinearExtension<E::ScalarField>, srs: &SamaritanMLPCS_SRS<E>) -> Result<HybridPlonkProof<E>, Error> {
@@ -751,7 +855,7 @@ impl<E: Pairing> HybridPlonk<E> {
 	    let K_ext_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(K_ext_hat_coeffs);
 	    let K_ext_tilde = DenseMultilinearExtension::<E::ScalarField>::from_evaluations_vec(log_number_of_gates, K_ext_hat.coeffs().to_vec());
 
-	    let K_ext_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &K_ext_hat).unwrap();
+	    let K_ext_hat_commit = Self::compute_K_ext_hat_commit(&srs, &K_hat, number_of_initial_rounds);
 
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"K_ext_hat_commit", &K_ext_hat_commit);
 
@@ -908,10 +1012,27 @@ impl<E: Pairing> HybridPlonk<E> {
         let u_hat_commit_mlp = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &u_hat_mlp).unwrap();
         util::append_commitment_to_transcript::<E>(&mut transcript, b"u_hat_commit_mlp", &u_hat_commit_mlp);
 
-        let t_hat_mlp = Self::compute_t_hat_mlp(&u0_hat, &u1_hat, &v0_hat, &v1_hat, &K_hat, &h_hat, 
+        // let t_hat_mlp = Self::compute_t_hat_mlp(&u0_hat, &u1_hat, &v0_hat, &v1_hat, &K_hat, &h_hat, 
+        // 	&v_psi_phi_combined_mlp, &b_hat_mlp, &p_psi_combined_mlp, &u_hat_mlp, &f_hat_mlp, &p_hat_mlp,
+		// 	combined_mlp_eval, v_gamma_, alpha_, gamma_, epsilon, number_of_gates, m, l_, m_);
+
+        // // println!("t_hat_mlp len: {}", t_hat_mlp.coeffs().len());
+        // let t_hat_mlp_time = start_timer!(|| format!("t_hat_mlp commit time")); 
+        // let t_hat_commit_mlp = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &t_hat_mlp).unwrap();
+        // end_timer!(t_hat_mlp_time);
+
+        // let t_hat_mlp_time_ = start_timer!(|| format!("t_hat_mlp commit new time")); 
+        let (t_hat_mlp, t_hat_commit_mlp) = Self::compute_t_hat_mlp_and_its_commit(&srs, &u0_hat, &u_0_tilde_commit, &u1_hat, &u_1_tilde_commit, 
+        	&v0_hat, &v_0_tilde_commit, &v1_hat, &v_1_tilde_commit, &K_hat, &h_hat, 
         	&v_psi_phi_combined_mlp, &b_hat_mlp, &p_psi_combined_mlp, &u_hat_mlp, &f_hat_mlp, &p_hat_mlp,
 			combined_mlp_eval, v_gamma_, alpha_, gamma_, epsilon, number_of_gates, m, l_, m_);
-        let t_hat_commit_mlp = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &t_hat_mlp).unwrap();
+        // end_timer!(t_hat_mlp_time_);
+        // assert_eq!(t_hat_mlp, t_hat_mlp_);
+        // assert_eq!(t_hat_commit_mlp, t_hat_commit_mlp_);
+
+        // let t_hat_commit_mlp = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &t_hat_mlp).unwrap();
+        // end_timer!(t_hat_mlp_time);
+
         util::append_commitment_to_transcript::<E>(&mut transcript, b"t_hat_commit_mlp", &t_hat_commit_mlp);
 
         let s_hat_mlp = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); max_deg_ - n_ + 1], t_hat_mlp.coeffs().to_vec()].concat());
@@ -1193,13 +1314,15 @@ impl<E: Pairing> HybridPlonk<E> {
 
 	    let L_equality_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &phi_combined_univariates_commit, r, phi_combined_eval, &proof.L_hat_eval_proof).unwrap();
 
+        // let pair_time = start_timer!(|| format!("pairing check time"));
         let pairing_lhs_first = E::G1Prepared::from(proof.t_hat_commit_mlp.0);
         let pairing_lhs_second = srs.powers_of_h[max_deg_ - n_ + 1];
         let pairing_lhs_res = E::pairing(pairing_lhs_first, pairing_lhs_second);
 
         let pairing_rhs_first = E::G1Prepared::from(proof.s_hat_commit_mlp.0);
         let pairing_rhs_second = srs.powers_of_h[0];
-        let pairing_rhs_res = E::pairing(pairing_rhs_first, pairing_rhs_second);        
+        let pairing_rhs_res = E::pairing(pairing_rhs_first, pairing_rhs_second); 
+        // end_timer!(pair_time);       
 
         // end_timer!(verifier_time);
         // Note that L_equality_check includes uv_equality_check, K_ext_hat_equality_check, S_equality_check, and deg_check together.
@@ -1235,7 +1358,7 @@ mod tests {
     	let mut rng = &mut test_rng();
         // n is the dimension of each of the two vectors (A and B) participating in inner product. (2*n) is the number of gates in the circuit. 2^(n+1) is the size of
     	// evaluation vecs of each mlp. In short #vars = (n + 1).
-    	let n: usize = 1 << 11;
+    	let n: usize = 1 << 14;
     	let A: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
     	let B: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
     	let myckt: HybridPlonkCircuit::<Bls12_381> = HybridPlonk_Bls12_381::generate_circuit_for_inner_product(&A, &B, n);
