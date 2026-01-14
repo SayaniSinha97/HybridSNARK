@@ -27,7 +27,6 @@ pub struct VanillaSumcheckProof<E: Pairing> {
 	mlp_a_commit: Commitment<E>,
 	mlp_b_commit: Commitment<E>,
 	mlp_ab_commit: Commitment<E>,
-	// eval_a_tilde_at_alphas: E::ScalarField,
 	eval_mlp_b_at_alphas: E::ScalarField,
 	combined_mlp_eval_proof: SamaritanMLPCSEvalProof<E>,
 	coeffs: Vec<Vec<E::ScalarField>>,
@@ -40,8 +39,6 @@ pub struct VanillaSumcheck<E: Pairing> {
 impl<E: Pairing> VanillaSumcheck<E> {
 	pub fn setup<R: RngCore>(rng: &mut R, log_number_of_gates: usize) -> Result<SamaritanMLPCS_SRS<E>, Error> {
 		let srs = SamaritanMLPCS::<E>::setup(log_number_of_gates, rng).unwrap();
-
-		// let qM_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &mlp_ab).unwrap();
 
 		Ok(srs)
 	}
@@ -62,7 +59,7 @@ impl<E: Pairing> VanillaSumcheck<E> {
 
 		let mut first = E::ScalarField::one();
 		for i in 0..log_number_of_gates {
-			first *= E::ScalarField::one() - tau[i];
+			first *= one_minus_tau[i];
 		}
 		let mut evals: Vec<E::ScalarField> = vec![first; number_of_gates];
 		let mut bit_seq: Vec<i8> = vec![0; log_number_of_gates];
@@ -154,7 +151,6 @@ impl<E: Pairing> VanillaSumcheck<E> {
 		let mlp_ab_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &mlp_ab).unwrap();
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"mlp_ab_commit", &mlp_ab_commit);
 
-		// let xi = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"xi");
 		let tau = util::sample_random_challenge_vector_from_transcript::<E>(&mut transcript, b"tau", log_number_of_gates);
 
 		let mut eq_tilde = Self::compute_eq_tilde(log_number_of_gates, &tau);
@@ -168,8 +164,7 @@ impl<E: Pairing> VanillaSumcheck<E> {
 		let mut mlp_ab_copy = mlp_ab.clone();
 		
 
-		let mut mlp_set = vec![&mut eq_tilde, &mut mlp_a_copy, &mut mlp_b_copy,
-			 &mut mlp_ab_copy];
+		let mut mlp_set = vec![&mut eq_tilde, &mut mlp_a_copy, &mut mlp_b_copy, &mut mlp_ab_copy];
 
 		let mut coeffs: Vec<_> = Vec::new();
 		let mut alphas: Vec<_> = Vec::new();
@@ -192,7 +187,6 @@ impl<E: Pairing> VanillaSumcheck<E> {
 		let alpha_final = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha_final");
 		alphas.push(alpha_final);
 
-		// let eval_mlp_a_at_alphas = mlp_a.evaluate(&alphas);
 		let eval_mlp_b_at_alphas = mlp_b.evaluate(&alphas);
 
 		let combined_mlp = Self::compute_combined_mlp(log_number_of_gates, &mlp_ab, &mlp_a, eval_mlp_b_at_alphas, &alphas, &tau);
@@ -205,7 +199,6 @@ impl<E: Pairing> VanillaSumcheck<E> {
 			mlp_a_commit,
 			mlp_b_commit,
 			mlp_ab_commit,
-			// eval_a_tilde_at_alphas,
 			eval_mlp_b_at_alphas,
 			combined_mlp_eval_proof,
 			coeffs,
@@ -242,7 +235,7 @@ impl<E: Pairing> VanillaSumcheck<E> {
 		}
 		let alpha_final = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha_final");
 		let mut final_poly_coeffs = proof.coeffs[log_number_of_gates-1].clone();
-		final_poly_coeffs.push(cur_eval_value- final_poly_coeffs[0]);
+		final_poly_coeffs.push(cur_eval_value - final_poly_coeffs[0]);
 		cur_eval_value = Self::compute_evaluation_through_lagrange_interpolation(&d_plus_one_evaluation_points, &final_poly_coeffs, alpha_final);
 		alphas.push(alpha_final);
 

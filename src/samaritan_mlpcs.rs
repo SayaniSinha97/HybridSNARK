@@ -267,17 +267,22 @@ impl<E: Pairing> SamaritanMLPCS<E>
         t_hat
     }
 
-    pub(crate) fn compute_q_hat(t_hat: &DensePolynomial<E::ScalarField>, v_hat: &DensePolynomial<E::ScalarField>, psi_hat_X_zy: &DensePolynomial<E::ScalarField>, phi_hat_X_gamma: &DensePolynomial<E::ScalarField>, psi_hat_X_zx: &DensePolynomial<E::ScalarField>, b_hat: &DensePolynomial<E::ScalarField>, u_hat: &DensePolynomial<E::ScalarField>, f_hat: &DensePolynomial<E::ScalarField>, p_hat: &DensePolynomial<E::ScalarField>, alpha: &E::ScalarField, beta: &E::ScalarField, gamma: &E::ScalarField, delta: &E::ScalarField, v: &E::ScalarField, v_gamma: &E::ScalarField, l: usize, m: usize) -> DensePolynomial<E::ScalarField> {
+    pub(crate) fn compute_q_hat(t_hat: &DensePolynomial<E::ScalarField>, v_hat: &DensePolynomial<E::ScalarField>, psi_hat_X_zy: &DensePolynomial<E::ScalarField>, 
+                                phi_hat_X_gamma: &DensePolynomial<E::ScalarField>, psi_hat_X_zx: &DensePolynomial<E::ScalarField>, 
+                                b_hat: &DensePolynomial<E::ScalarField>, u_hat: &DensePolynomial<E::ScalarField>, 
+                                f_hat: &DensePolynomial<E::ScalarField>, p_hat: &DensePolynomial<E::ScalarField>, 
+                                alpha: &E::ScalarField, beta: &E::ScalarField, gamma: &E::ScalarField, delta: &E::ScalarField, delta_inverse: &E::ScalarField, 
+                                v: &E::ScalarField, v_gamma: &E::ScalarField, l: usize, m: usize) -> DensePolynomial<E::ScalarField> {
         let psi_hat_X_zy_at_delta = psi_hat_X_zy.evaluate(delta);
         let phi_hat_X_gamma_at_delta = phi_hat_X_gamma.evaluate(delta);
         let psi_hat_X_zx_at_delta = psi_hat_X_zx.evaluate(delta);
 
         let first_term_in_q_hat = t_hat;
 
-        let multiplier1 = E::ScalarField::from(delta.pow(&[l as u64])).inverse().unwrap();
+        let multiplier1 = E::ScalarField::from(delta_inverse.pow(&[l as u64]));
         let second_term_in_q_hat = (v_hat * (psi_hat_X_zy_at_delta + phi_hat_X_gamma_at_delta * alpha) - b_hat - DensePolynomial::<E::ScalarField>::from_coefficients_vec(vec![E::ScalarField::from((delta.pow(&[(l-1) as u64])) * (*v + (*alpha) * v_gamma))])) * (multiplier1);
         
-        let multiplier2 = E::ScalarField::from(delta.pow(&[m as u64])).inverse().unwrap();
+        let multiplier2 = E::ScalarField::from(delta_inverse.pow(&[m as u64]));
         let third_term_in_q_hat = (p_hat * (psi_hat_X_zx_at_delta) - u_hat - DensePolynomial::<E::ScalarField>::from_coefficients_vec(vec![E::ScalarField::from(*v_gamma * (delta.pow(&[(m-1) as u64])))])) * (multiplier2 * *beta);
         
         let multiplier3 = (delta.pow(&[m as u64]) - gamma).inverse().unwrap();
@@ -296,16 +301,16 @@ impl<E: Pairing> SamaritanMLPCS<E>
     }
 
     // verifier computes q_hat_commit from existing commitments (sent by prover) using homomorphic property of underlying kzg10
-    pub(crate) fn compute_q_hat_commit(g: E::G1Affine, t_hat_commit: &Commitment<E>, v_hat_commit: &Commitment<E>, p_hat_commit: &Commitment<E>, b_hat_commit: &Commitment<E>, u_hat_commit: &Commitment<E>, mlp_comm: &Commitment<E>, psi_hat_X_zy_at_delta: E::ScalarField, phi_hat_X_gamma_at_delta: E::ScalarField, psi_hat_X_zx_at_delta: E::ScalarField, alpha: &E::ScalarField, beta: &E::ScalarField, gamma: &E::ScalarField, delta: &E::ScalarField, v: &E::ScalarField, v_gamma: &E::ScalarField, l: usize, m: usize) -> Commitment<E> {
+    pub(crate) fn compute_q_hat_commit(g: E::G1Affine, t_hat_commit: &Commitment<E>, v_hat_commit: &Commitment<E>, p_hat_commit: &Commitment<E>, b_hat_commit: &Commitment<E>, u_hat_commit: &Commitment<E>, mlp_comm: &Commitment<E>, psi_hat_X_zy_at_delta: E::ScalarField, phi_hat_X_gamma_at_delta: E::ScalarField, psi_hat_X_zx_at_delta: E::ScalarField, alpha: &E::ScalarField, beta: &E::ScalarField, gamma: &E::ScalarField, delta: &E::ScalarField, delta_inverse: &E::ScalarField, v: &E::ScalarField, v_gamma: &E::ScalarField, l: usize, m: usize) -> Commitment<E> {
         let commit_terms : Vec<E::G1Affine> = vec![t_hat_commit.0, v_hat_commit.0, g, b_hat_commit.0, p_hat_commit.0, g, u_hat_commit.0, mlp_comm.0, p_hat_commit.0, mlp_comm.0, p_hat_commit.0, u_hat_commit.0, b_hat_commit.0]; 
         
         let mut scalar_terms = vec![E::ScalarField::one(); 13];
-        scalar_terms[1] = - (psi_hat_X_zy_at_delta + (*alpha * phi_hat_X_gamma_at_delta)) * (E::ScalarField::from(delta.pow(&[l as u64])).inverse().unwrap());
-        scalar_terms[2] = (*v + (*alpha * v_gamma)) * (E::ScalarField::from(*delta).inverse().unwrap());
-        scalar_terms[3] = E::ScalarField::from(delta.pow(&[l as u64])).inverse().unwrap();
-        scalar_terms[4] = - (psi_hat_X_zx_at_delta * beta) * (E::ScalarField::from(delta.pow(&[m as u64])).inverse().unwrap());
-        scalar_terms[5] = (*beta * v_gamma) * (E::ScalarField::from(*delta).inverse().unwrap());
-        scalar_terms[6] = (*beta) * (E::ScalarField::from(delta.pow(&[m as u64])).inverse().unwrap());
+        scalar_terms[1] = - (psi_hat_X_zy_at_delta + (*alpha * phi_hat_X_gamma_at_delta)) * E::ScalarField::from(delta_inverse.pow(&[l as u64]));
+        scalar_terms[2] = (*v + (*alpha * v_gamma)) * E::ScalarField::from(*delta_inverse);
+        scalar_terms[3] = E::ScalarField::from(delta_inverse.pow(&[l as u64]));
+        scalar_terms[4] = - (psi_hat_X_zx_at_delta * beta) * E::ScalarField::from(delta_inverse.pow(&[m as u64]));
+        scalar_terms[5] = (*beta * v_gamma) * E::ScalarField::from(*delta_inverse);
+        scalar_terms[6] = *beta * E::ScalarField::from(delta_inverse.pow(&[m as u64]));
         scalar_terms[7] = - (beta.pow(&[2 as u64])) * (E::ScalarField::from(delta.pow(&[m as u64])-gamma).inverse().unwrap());
         scalar_terms[8] = - scalar_terms[7];
         scalar_terms[9] = - (beta.pow(&[3 as u64]));
@@ -418,8 +423,9 @@ impl<E: Pairing> SamaritanMLPCS<E>
         util::append_commitment_to_transcript::<E>(&mut transcript, b"s_hat_commit", &s_hat_commit);
 
         let delta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"delta");
+        let delta_inverse = delta.inverse().unwrap();
 
-        let q_hat = Self::compute_q_hat(&t_hat, &v_hat, &psi_hat_X_zy, &phi_hat_X_gamma, &psi_hat_X_zx, &b_hat, &u_hat, &f_hat, &p_hat, &alpha, &beta, &gamma, &delta, &eval, &v_gamma, l, m);
+        let q_hat = Self::compute_q_hat(&t_hat, &v_hat, &psi_hat_X_zy, &phi_hat_X_gamma, &psi_hat_X_zx, &b_hat, &u_hat, &f_hat, &p_hat, &alpha, &beta, &gamma, &delta, &delta_inverse, &eval, &v_gamma, l, m);
 
         let q_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &q_hat, delta).unwrap();
         // end_timer!(prover_time);
@@ -473,12 +479,13 @@ impl<E: Pairing> SamaritanMLPCS<E>
         util::append_commitment_to_transcript::<E>(&mut transcript, b"s_hat_commit", &proof.s_hat_commit);
 
         let delta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"delta");
+        let delta_inverse = delta.inverse().unwrap();
 
         let psi_hat_X_zy_at_delta = Self::evaluate_psi_hat_X_zy_at_delta(&point, &delta, kappa as usize, nu as usize);
         let phi_hat_X_gamma_at_delta = Self::evaluate_phi_hat_X_gamma_at_delta(&gamma, &delta, nu as usize);
         let psi_hat_X_zx_at_delta = Self::evaluate_psi_hat_X_zx_at_delta(&point, &delta, kappa as usize, nu as usize);
 
-        let q_hat_commit = Self::compute_q_hat_commit(srs.powers_of_g[0], &proof.t_hat_commit, &proof.v_hat_commit, &proof.p_hat_commit, &proof.b_hat_commit, &proof.u_hat_commit, &mlp_comm, psi_hat_X_zy_at_delta, phi_hat_X_gamma_at_delta, psi_hat_X_zx_at_delta, &alpha, &beta, &gamma, &delta, &value, &proof.v_gamma, l, m);
+        let q_hat_commit = Self::compute_q_hat_commit(srs.powers_of_g[0], &proof.t_hat_commit, &proof.v_hat_commit, &proof.p_hat_commit, &proof.b_hat_commit, &proof.u_hat_commit, &mlp_comm, psi_hat_X_zy_at_delta, phi_hat_X_gamma_at_delta, psi_hat_X_zx_at_delta, &alpha, &beta, &gamma, &delta, &delta_inverse, &value, &proof.v_gamma, l, m);
         
         let passed = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &q_hat_commit, delta, E::ScalarField::zero(), &proof.q_eval_proof).unwrap();
 

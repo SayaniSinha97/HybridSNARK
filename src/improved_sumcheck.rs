@@ -48,16 +48,21 @@ pub struct ImprovedSumcheckProof<E: Pairing> {
 	A_hat_commit: Commitment<E>,
 	eval_for_delta: E::ScalarField,
 	S_hat_commit: Commitment<E>,
-	d_hat_commit: Commitment<E>,
-	D_hat_commit: Commitment<E>,
-	// W1: E::ScalarField,
 	W2: E::ScalarField,
 	W3: E::ScalarField,
 	W4: E::ScalarField,
 	W5: E::ScalarField,
 	W6: E::ScalarField,
-	combined_mlp_eval_proof: SamaritanMLPCSEvalProof<E>,
-	L_hat_eval_proof: KZG10EvalProof<E>,
+
+	//elements corresponding to Samaritan MLPCS
+	v_hat_commit_mlp: Commitment<E>,
+    v_gamma_: E::ScalarField,
+    p_hat_commit_mlp: Commitment<E>,
+    b_hat_commit_mlp: Commitment<E>,
+    u_hat_commit_mlp: Commitment<E>,
+    t_hat_commit_mlp: Commitment<E>,
+    s_hat_commit_mlp: Commitment<E>,
+    L_hat_eval_proof: KZG10EvalProof<E>,
 }
 
 pub struct ImprovedSumcheck<E: Pairing> {
@@ -67,8 +72,6 @@ pub struct ImprovedSumcheck<E: Pairing> {
 impl<E: Pairing> ImprovedSumcheck<E> {
 	pub fn setup<R: RngCore>(rng: &mut R, log_number_of_gates: usize) -> Result<SamaritanMLPCS_SRS<E>, Error> {
 		let srs = SamaritanMLPCS::<E>::setup(log_number_of_gates, rng).unwrap();
-
-		// let qM_comm = SamaritanMLPCS::<E>::commit_G1(&srs, &mlp_ab).unwrap();
 
 		Ok(srs)
 	}
@@ -89,7 +92,7 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 
 		let mut first = E::ScalarField::one();
 		for i in 0..log_number_of_gates {
-			first *= E::ScalarField::one() - tau[i];
+			first *= one_minus_tau[i];
 		}
 		let mut evals: Vec<E::ScalarField> = vec![first; number_of_gates];
 		let mut bit_seq: Vec<i8> = vec![0; log_number_of_gates];
@@ -233,8 +236,9 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 
 		let mut A_hat_coeffs : Vec<_> = Vec::new();
 		for i in 0..m {
-			A_hat_coeffs.push(A_hat_evals_at_roots_of_unity_inv[i].inverse().unwrap());
+			A_hat_coeffs.push(A_hat_evals_at_roots_of_unity_inv[i]);
 		}
+		batch_inversion(&mut A_hat_coeffs);
 		let A_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(A_hat_coeffs);
 		A_hat
 	}
@@ -242,8 +246,10 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 	pub(crate) fn compute_B_hat_delta_coeffs(A_hat: &DensePolynomial<E::ScalarField>, delta: E::ScalarField, m: usize) -> Vec<E::ScalarField> {
 		let mut B_hat_delta_coeffs : Vec<_> = Vec::new();
 		let A_hat_coeffs = A_hat.coeffs().to_vec();
+		let mut A_hat_coeffs_inverse = A_hat_coeffs.clone();
+		batch_inversion(&mut A_hat_coeffs_inverse);
 		for i in 0..m {
-			B_hat_delta_coeffs.push(A_hat_coeffs[i].inverse().unwrap() * delta.pow(&[i as u64]));
+			B_hat_delta_coeffs.push(A_hat_coeffs_inverse[i] * delta.pow(&[i as u64]));
 		}
 		B_hat_delta_coeffs
 	}
@@ -316,6 +322,78 @@ impl<E: Pairing> ImprovedSumcheck<E> {
     	DenseMultilinearExtension::<E::ScalarField>::from_evaluations_vec(log_number_of_gates, combined_mlp_evals)
     }
 
+    pub fn compute_K_ext_hat_commit(srs: &SamaritanMLPCS_SRS<E>, K_hat: &DensePolynomial<E::ScalarField>, number_of_initial_rounds: usize) -> Commitment<E> {
+		let mut modified_bases = Vec::new();
+		let rep_count = 1 << number_of_initial_rounds;
+		for i in 0..K_hat.coeffs().len() {
+			let mut tmp = E::G1::zero();
+			for j in &srs.powers_of_g[(i * rep_count)..((i+1) * rep_count)] {
+				tmp += j;
+			}
+			modified_bases.push(tmp.into_affine());
+		}
+		Commitment(E::G1::msm(&modified_bases, &K_hat.coeffs()).unwrap().into_affine())
+	}
+
+	pub fn compute_t_hat_mlp_and_its_commit(srs: &SamaritanMLPCS_SRS<E>,
+												K_hat: &DensePolynomial<E::ScalarField>, h_hat: &DensePolynomial<E::ScalarField>, 
+	        									v_psi_phi_combined_mlp: &DensePolynomial<E::ScalarField>, b_hat_mlp: &DensePolynomial<E::ScalarField>, 
+        										p_psi_combined_mlp: &DensePolynomial<E::ScalarField>, u_hat_mlp: &DensePolynomial<E::ScalarField>,
+        										f_hat_mlp: &DensePolynomial<E::ScalarField>, p_hat_mlp: &DensePolynomial<E::ScalarField>,
+												eval: E::ScalarField, v_gamma: E::ScalarField, alpha: E::ScalarField, gamma: E::ScalarField, epsilon: E::ScalarField, 
+												number_of_gates: usize, m: usize, l_: usize, m_: usize) -> (DensePolynomial<E::ScalarField>, Commitment<E>) {
+		let K_hat_right_shifted_commit: Commitment<E> = Commitment(E::G1::msm(&srs.powers_of_g[(number_of_gates - m)..(number_of_gates - m + &K_hat.coeffs().len())], &K_hat.coeffs()).unwrap().into_affine());
+		let h_hat_right_shifted_commit: Commitment<E> = Commitment(E::G1::msm(&srs.powers_of_g[(number_of_gates - m + 1)..(number_of_gates - m + 1 + &h_hat.coeffs().len())], &h_hat.coeffs()).unwrap().into_affine());
+
+
+		let simple_term_1 = &DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); number_of_gates - m], K_hat.coeffs().to_vec()].concat().to_vec())
+								+ &DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); number_of_gates - m + 1], h_hat.coeffs().to_vec()].concat().to_vec()) * epsilon;
+		let simple_term_1_commit: Commitment<E> = Commitment(E::G1::msm(&vec![K_hat_right_shifted_commit.0, h_hat_right_shifted_commit.0],
+			&vec![E::ScalarField::one(), epsilon]).unwrap().into_affine());
+
+		let mid_term1 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); l_ - 1], vec![E::ScalarField::from(eval + (alpha * v_gamma))]].concat());
+        let mut simple_term_2 = (v_psi_phi_combined_mlp - &mid_term1 - b_hat_mlp) * epsilon.pow(&[2 as u64]);
+        simple_term_2 = DensePolynomial::<E::ScalarField>::from_coefficients_vec(simple_term_2.coeffs()[l_..].to_vec());
+
+        let mid_term2 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); m_ - 1], vec![E::ScalarField::from(v_gamma)]].concat());
+        let mut simple_term_3 = (p_psi_combined_mlp - &mid_term2 - u_hat_mlp) * epsilon.pow(&[3 as u64]);
+        simple_term_3 = DensePolynomial::<E::ScalarField>::from_coefficients_vec(simple_term_3.coeffs()[m_..].to_vec());
+
+        let mut simple_term_4 = (f_hat_mlp - p_hat_mlp) * epsilon.pow(&[4 as u64]);
+        let mut term_coeffs = (&simple_term_4).coeffs.clone();
+        for i in (m_..term_coeffs.len()).rev() {
+            let quotient = term_coeffs[i];
+            term_coeffs[i - m_] += quotient * gamma;
+        }
+        term_coeffs = term_coeffs[m_..].to_vec();//  truncate(third_term_coeffs.len() - m_);
+        simple_term_4 = DensePolynomial::<E::ScalarField>::from_coefficients_vec(term_coeffs);
+
+        let simple_term_5 = f_hat_mlp * epsilon.pow(&[5 as u64]);
+
+        let simple_terms_combined_long = &simple_term_4 + &simple_term_5;
+        
+        let simple_terms_combined_long_commit: Commitment<E> = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &simple_terms_combined_long).unwrap();
+
+        let mut simple_term_6 = p_hat_mlp * epsilon.pow(&[6 as u64]);
+        simple_term_6 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); (m_ * l_) - m_], (&simple_term_6).coeffs().to_vec()].concat());
+
+        let mut simple_term_7 = u_hat_mlp * epsilon.pow(&[7 as u64]);
+        simple_term_7 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); (m_ * l_) - m_ + 1], (&simple_term_7).coeffs().to_vec()].concat());
+
+		let mut simple_term_8 = b_hat_mlp * epsilon.pow(&[8 as u64]);
+        simple_term_8 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); (m_ * l_) - l_ + 1], (&simple_term_8).coeffs().to_vec()].concat());
+
+        let t_hat_mlp = &simple_term_1 + &simple_term_2 + &simple_term_3 + &simple_term_4 + &simple_term_5 + &simple_term_6 + &simple_term_7 + &simple_term_8;
+
+        let simple_terms_combined = &simple_term_2 + simple_term_3 + simple_term_6 + simple_term_7 + simple_term_8;
+
+        let simple_terms_combined_commit: Commitment<E> = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &simple_terms_combined).unwrap();
+        
+        let t_hat_mlp_commit: Commitment<E> = Commitment((simple_term_1_commit.0 + simple_terms_combined_long_commit.0 + simple_terms_combined_commit.0).into_affine());
+
+		(t_hat_mlp, t_hat_mlp_commit)
+	}
+
     pub fn prove(srs: &SamaritanMLPCS_SRS<E>, log_number_of_gates: usize, mlp_a: &DenseMultilinearExtension<E::ScalarField>, mlp_b: &DenseMultilinearExtension<E::ScalarField>, mlp_ab: &DenseMultilinearExtension<E::ScalarField>) -> Result<ImprovedSumcheckProof<E>, Error> {
     	let log_number_of_gates = log_number_of_gates;
 		let number_of_gates = 2usize.pow(log_number_of_gates as u32);
@@ -333,7 +411,6 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 		let mlp_ab_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &mlp_ab).unwrap();
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"mlp_ab_commit", &mlp_ab_commit);
 
-		// let xi = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"xi");
 		let tau = util::sample_random_challenge_vector_from_transcript::<E>(&mut transcript, b"tau", log_number_of_gates);
 
 		let mut eq_tilde = Self::compute_eq_tilde(log_number_of_gates, &tau);
@@ -347,14 +424,13 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 		let mut mlp_ab_copy = mlp_ab.clone();
 		
 
-		let mut mlp_set = vec![&mut eq_tilde, &mut mlp_a_copy, &mut mlp_b_copy,
-			 &mut mlp_ab_copy];
+		let mut mlp_set = vec![&mut eq_tilde, &mut mlp_a_copy, &mut mlp_b_copy, &mut mlp_ab_copy];
 
 		let mut coeffs: Vec<_> = Vec::new();
 		let mut alphas: Vec<_> = Vec::new();
 		
 		for i in 0..number_of_initial_rounds {
-		    // we use 1,2,..,5 as the evaluation points, then at verifier end evaluation at zero is determined by subtracting evaluation at one from previous round evaluation 
+		    // we use 1,2,3 as the evaluation points, then at verifier end evaluation at zero is determined by subtracting evaluation at one from previous round evaluation 
 			let d_plus_one_evaluation_points = (1..=3).map(|x| E::ScalarField::from(x as u64)).collect::<Vec<_>>();
 			if i > 0 {
 				let alpha = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha");
@@ -461,7 +537,7 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 	    let K_ext_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(K_ext_hat_coeffs);
 	    let K_ext_tilde = DenseMultilinearExtension::<E::ScalarField>::from_evaluations_vec(log_number_of_gates, K_ext_hat.coeffs().to_vec());
 
-	    let K_ext_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &K_ext_hat).unwrap();
+	    let K_ext_hat_commit = Self::compute_K_ext_hat_commit(&srs, &K_hat, number_of_initial_rounds);
 
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"K_ext_hat_commit", &K_ext_hat_commit);
 
@@ -499,22 +575,9 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 	    let S_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &S_hat).unwrap();
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"S_hat_commit", &S_hat_commit);
 
-	    let d_hat = Self::compute_d_hat(&K_hat, &h_hat, epsilon, number_of_gates, m);
-
-	    let d_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &d_hat).unwrap();
-	    util::append_commitment_to_transcript::<E>(&mut transcript, b"d_hat_commit", &d_hat_commit);
-
-	    let max_deg = number_of_gates;
-
-	    let D_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); max_deg - number_of_gates + 1], d_hat.coeffs().to_vec()].concat().to_vec());
-
-	    let D_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &D_hat).unwrap();
-	    util::append_commitment_to_transcript::<E>(&mut transcript, b"D_hat_commit", &D_hat_commit);
-
 	    let r = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"r");
 	    let r_inverse = r.inverse().unwrap();
 
-	    // let W1 = (&v0_hat + &v1_hat * r).evaluate(&r.pow(&[2 as u64]));
 	    let W2 = K_hat.evaluate(&r.pow(&[(1 << number_of_initial_rounds) as u64]));
 	    let W3 = t_hat.evaluate(&r_inverse);
 	    let W4 = H_bar.evaluate(&r_inverse);
@@ -527,14 +590,6 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 
 	    let S_equality_left = (&H_bar * W3 + &t_hat * W4) + (&A_hat * e_hat_inv_eval) * epsilon + (&A_hat * B_hat_delta_inv_eval) * epsilon * epsilon - &S_hat * r;
 
-	    let deg_check_left = &d_hat - &K_hat * r.pow(&[(number_of_gates - m) as u64]) - &h_hat * r.pow(&[(number_of_gates - m + 1) as u64]) * epsilon;
-
-	    let phi = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"phi");
-
-	    let L_hat = K_ext_hat + S_equality_left * phi + deg_check_left * phi.pow(&[2 as u64]);
-
-	    let L_hat_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &L_hat, r).unwrap();
-
 	    let eq_tilde_val = Self::evaluate_eq_tilde_at_point(log_number_of_gates, &tau, &eval_point);
 
 		let mut linear_combined_orig_mlps_and_K_ext_tilde_evals: Vec<_> = Vec::new();
@@ -545,7 +600,111 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 
 		let combined_mlp = DenseMultilinearExtension::<E::ScalarField>::from_evaluations_vec(log_number_of_gates, linear_combined_orig_mlps_and_K_ext_tilde_evals);
 		let combined_mlp_eval = (E::ScalarField::one() + epsilon) * V_y - eq_tilde_val * a_vec[0];
-		let combined_mlp_eval_proof = SamaritanMLPCS::<E>::prove(&srs, &combined_mlp, &eval_point, combined_mlp_eval, &mut rng).unwrap();
+		
+
+		// let combined_mlp_eval_proof = SamaritanMLPCS::<E>::prove(&srs, &combined_mlp, &eval_point, combined_mlp_eval, &mut rng).unwrap();
+
+		let mu_: usize = combined_mlp.num_vars;
+		// assert_eq!(mu_, log_number_of_gates);
+        let kappa_ = (mu_ as f64).log2().round() as i32;
+        let nu_: i32 = (mu_ as i32) - kappa_;
+        let n_: usize = 2usize.pow(mu_ as u32);
+        let m_: usize = 2usize.pow(kappa_ as u32);
+        let l_: usize = 2usize.pow(nu_ as u32);
+        let max_deg_: usize = n_;
+
+        let f_hat_mlp = SamaritanMLPCS::<E>::get_univariate_from_multilinear(&combined_mlp);
+
+        //the v_i's, where v_i = g_i(z_x) = f(z_x, <i>) for all i\in[l]
+        let g_evaluation_values: Vec<_> = SamaritanMLPCS::<E>::get_evaluation_set(&combined_mlp, &eval_point, kappa_ as usize, nu_ as usize);
+
+        //the polynomial v(x)=\sum_{i=1}^l X^{i-1}v_i
+        let v_hat_mlp = DensePolynomial::<E::ScalarField>::from_coefficients_vec(g_evaluation_values);
+
+        //commit to v(x)
+        let v_hat_commit_mlp = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &v_hat_mlp).unwrap();
+
+        util::append_commitment_to_transcript::<E>(&mut transcript, b"v_hat_commit_mlp", &v_hat_commit_mlp);
+
+        //choosing a random field element \gamma, supposed to be verifier's choice, will edit the code to emulate RO behaviour to generate it from H(transcript till the point) 
+        let gamma_ = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"gamma_");
+
+        //compute v_gamma = v(\gamma)
+        let v_gamma_ = v_hat_mlp.evaluate(&gamma_);
+        util::append_field_element_to_transcript::<E>(&mut transcript, b"v_gamma_", &v_gamma_);
+
+        // divide the univariate polynomial into multiple chunks and return those chunks as vectors of univariate polynomials
+        let all_gxs_mlp: Vec<_> = SamaritanMLPCS::<E>::divide_into_univ_polynomial_chunks(&f_hat_mlp, m_, n_);
+
+        // linearly combine those small univariate polynomials 
+        let p_hat_mlp = SamaritanMLPCS::<E>::linear_combination_of_polynomials(&all_gxs_mlp, gamma_, l_);
+
+        // commit to linearly_combined_poly, p_hat(x) = \sum_{i=1}^l\gamma^{i-1}g_i(x)
+        let p_hat_commit_mlp = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &p_hat_mlp).unwrap();
+
+        util::append_commitment_to_transcript::<E>(&mut transcript, b"p_hat_commit_mlp", &p_hat_commit_mlp);
+
+        #[allow(non_snake_case)]
+        let psi_hat_X_zy_mlp = SamaritanMLPCS::<E>::compute_psi_hat_X_zy(&eval_point, kappa_ as usize, nu_ as usize);
+
+        #[allow(non_snake_case)]
+        let phi_hat_X_gamma_mlp = SamaritanMLPCS::<E>::compute_phi_hat_X_gamma(&gamma_, nu_ as usize);
+
+        let alpha_ = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha_");
+
+        // v_psi_phi_combined = v * (psi + (alpha * phi))
+        let v_psi_phi_combined_mlp = &v_hat_mlp * (&psi_hat_X_zy_mlp + (&phi_hat_X_gamma_mlp) * alpha_);
+
+        // extract necessary (l-1) terms in b_hat
+        let least_coeffs_mlp = v_psi_phi_combined_mlp.coeffs()[..(l_-1)].to_vec();
+        let b_hat_mlp = DensePolynomial::<E::ScalarField>::from_coefficients_vec(least_coeffs_mlp);
+
+        // compute commitment to b_hat
+        let b_hat_commit_mlp = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &b_hat_mlp).unwrap();
+        util::append_commitment_to_transcript::<E>(&mut transcript, b"b_hat_commit_mlp", &b_hat_commit_mlp);
+
+        // compute psi_hat(X;zx)
+        #[allow(non_snake_case)]
+        let psi_hat_X_zx_mlp = SamaritanMLPCS::<E>::compute_psi_hat_X_zx(&eval_point, kappa_ as usize, nu_ as usize);
+
+        // compute p_hat(x) * psi_hat(X;zx)
+        let p_psi_combined_mlp = &p_hat_mlp * &psi_hat_X_zx_mlp;
+
+        // extract necessary (m-1) number of terms in u_hat
+        let selected_coeffs_mlp = p_psi_combined_mlp.coeffs()[..(m_ - 1)].to_vec();
+        let u_hat_mlp = DensePolynomial::<E::ScalarField>::from_coefficients_vec(selected_coeffs_mlp);
+
+        let u_hat_commit_mlp = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &u_hat_mlp).unwrap();
+        util::append_commitment_to_transcript::<E>(&mut transcript, b"u_hat_commit_mlp", &u_hat_commit_mlp);
+
+        let (t_hat_mlp, t_hat_commit_mlp) = Self::compute_t_hat_mlp_and_its_commit(&srs, &K_hat, &h_hat, 
+        	&v_psi_phi_combined_mlp, &b_hat_mlp, &p_psi_combined_mlp, &u_hat_mlp, &f_hat_mlp, &p_hat_mlp,
+			combined_mlp_eval, v_gamma_, alpha_, gamma_, epsilon, number_of_gates, m, l_, m_);
+
+        util::append_commitment_to_transcript::<E>(&mut transcript, b"t_hat_commit_mlp", &t_hat_commit_mlp);
+
+        let s_hat_mlp = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); max_deg_ - n_ + 1], t_hat_mlp.coeffs().to_vec()].concat());
+
+        let s_hat_commit_mlp = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &s_hat_mlp).unwrap();
+        util::append_commitment_to_transcript::<E>(&mut transcript, b"s_hat_commit_mlp", &s_hat_commit_mlp);
+
+        let psi_hat_X_zy_at_r_mlp = SamaritanMLPCS::<E>::evaluate_psi_hat_X_zy_at_delta(&eval_point, &r, kappa_ as usize, nu_ as usize);
+        let phi_hat_X_gamma_at_r_mlp = SamaritanMLPCS::<E>::evaluate_phi_hat_X_gamma_at_delta(&gamma_, &r, nu_ as usize);
+        let psi_hat_X_zx_at_r_mlp = SamaritanMLPCS::<E>::evaluate_psi_hat_X_zx_at_delta(&eval_point, &r, kappa_ as usize, nu_ as usize);
+
+        let deg_check_left = &t_hat_mlp - &K_hat * r.pow(&[(number_of_gates - m) as u64]) - &h_hat * r.pow(&[(number_of_gates - m + 1) as u64]) * epsilon
+	    						- &v_hat_mlp * (epsilon.pow(&[2 as u64]) * r_inverse.pow(&[l_ as u64]) * (psi_hat_X_zy_at_r_mlp + alpha_ * phi_hat_X_gamma_at_r_mlp))
+	    						+ &b_hat_mlp * (epsilon.pow(&[2 as u64]) * r_inverse.pow(&[l_ as u64]) - epsilon.pow(&[8 as u64]) * r.pow(&[(n_ - l_ + 1) as u64]))
+	    						+ &p_hat_mlp * (epsilon.pow(&[4 as u64]) * (r.pow(&[m_ as u64]) - gamma_).inverse().unwrap() - epsilon.pow(&[3 as u64]) * psi_hat_X_zx_at_r_mlp * r_inverse.pow(&[m_ as u64]) - epsilon.pow(&[6 as u64]) * r.pow(&[(n_ - m_) as u64]))
+	    						+ &u_hat_mlp * (epsilon.pow(&[3 as u64]) * r_inverse.pow(&[m_ as u64]) - epsilon.pow(&[7 as u64]) * r.pow(&[(n_ - m_ + 1) as u64]))
+	    						- &f_hat_mlp * (epsilon.pow(&[4 as u64]) * (r.pow(&[m_ as u64]) - gamma_).inverse().unwrap() + epsilon.pow(&[5 as u64]));
+
+	    let phi = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"phi");
+
+	    let L_hat = K_ext_hat + S_equality_left * phi + deg_check_left * phi.pow(&[2 as u64]);
+
+	    let L_hat_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &L_hat, r).unwrap();
+
 
 		let proof = ImprovedSumcheckProof{
 			number_of_initial_rounds,
@@ -570,16 +729,20 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 			A_hat_commit,
 			eval_for_delta,
 			S_hat_commit,
-			d_hat_commit,
-			D_hat_commit,
-			// W1,
 			W2,
 			W3,
 			W4,
 			W5,
 			W6,
-			combined_mlp_eval_proof,
-			L_hat_eval_proof,
+
+			v_hat_commit_mlp,
+		    v_gamma_,
+		    p_hat_commit_mlp,
+		    b_hat_commit_mlp,
+		    u_hat_commit_mlp,
+		    t_hat_commit_mlp,
+		    s_hat_commit_mlp,
+		    L_hat_eval_proof,
 		};
 		// end_timer!(prover_time);
 		Ok(proof)
@@ -660,10 +823,6 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 
 	    util::append_commitment_to_transcript::<E>(&mut transcript, b"S_hat_commit", &proof.S_hat_commit);
 
-	    util::append_commitment_to_transcript::<E>(&mut transcript, b"d_hat_commit", &proof.d_hat_commit);
-
-	    util::append_commitment_to_transcript::<E>(&mut transcript, b"D_hat_commit", &proof.D_hat_commit);
-
 	    let r = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"r");
 
 	    let K_ext_hat_eval = proof.W2 * (r.pow(&[(1 << number_of_initial_rounds) as u64]) - E::ScalarField::from(1 as u64)) * (r - E::ScalarField::from(1 as u64)).inverse().unwrap();
@@ -678,34 +837,6 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 
 		let combined_eval = (proof.V_y + proof.eval_for_eta * epsilon + proof.eval_for_delta * epsilon * epsilon) * E::ScalarField::from(2 as u64) + r_inverse * proof.W6 - epsilon * proof.W5 * e_hat_eval - epsilon * epsilon * proof.W5 * B_hat_delta_eval;
 
-	    let max_deg = number_of_gates + 1;
-
-	    let phi = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"phi");
-
-	    let comm_list = vec![ 
-	    			proof.K_ext_hat_commit.0, 
-	    			proof.H_bar_commit.0, proof.t_hat_commit.0, 
-	    			proof.A_hat_commit.0, proof.S_hat_commit.0, 
-	    			proof.d_hat_commit.0, proof.K_hat_commit.0, proof.h_hat_commit.0];
-	    let scalar_list = vec![
-	    			E::ScalarField::one(), 
-	    			proof.W3 * phi, proof.W4 * phi,
-	    			(epsilon * epsilon * B_hat_delta_inv_eval + epsilon * e_hat_inv_eval) * phi, - (r * phi),
-	    			phi.pow(&[2 as u64]), 
-	    			- (r.pow(&[(number_of_gates - m) as u64]) * phi.pow(&[2 as u64])), - (r.pow(&[(number_of_gates - m + 1) as u64]) * epsilon * phi.pow(&[2 as u64]))];
-
-	    let phi_combined_univariates_commit = Commitment(E::G1::msm(&comm_list, &scalar_list).unwrap().into_affine());
-	    let phi_combined_eval = K_ext_hat_eval + combined_eval * phi;
-	    let L_equality_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &phi_combined_univariates_commit, r, phi_combined_eval, &proof.L_hat_eval_proof).unwrap();
-
-	    let pairing_lhs_first = E::G1Prepared::from(proof.d_hat_commit.0);
-        let pairing_lhs_second = srs.powers_of_h[max_deg - number_of_gates];
-        let pairing_lhs_res = E::pairing(pairing_lhs_first, pairing_lhs_second);
-
-        let pairing_rhs_first = E::G1Prepared::from(proof.D_hat_commit.0);
-        let pairing_rhs_second = srs.powers_of_h[0];
-        let pairing_rhs_res = E::pairing(pairing_rhs_first, pairing_rhs_second);
-
         let mut eval_point = Vec::new();
 	    eval_point.extend_from_slice(&alphas);
 	    eval_point.extend_from_slice(&y);
@@ -714,18 +845,90 @@ impl<E: Pairing> ImprovedSumcheck<E> {
 
 	    let eq_tilde_val = Self::evaluate_eq_tilde_at_point(log_number_of_gates, &tau, &eval_point);
 
-		let combined_mlp_commit = Commitment(E::G1::msm(
+		let combined_mlp_commit: Commitment<E> = Commitment(E::G1::msm(
 	    							&vec![proof.mlp_a_commit.0, proof.mlp_b_commit.0, proof.mlp_ab_commit.0,
 		    							proof.K_ext_hat_commit.0],
 		    						&vec![a_vec[1], a_vec[2], a_vec[3], epsilon]
 		    						).unwrap().into_affine());
 
 		let combined_mlp_eval = (E::ScalarField::one() + epsilon) * proof.V_y - eq_tilde_val * a_vec[0];
-		let combined_mlp_check = SamaritanMLPCS::<E>::verify(&srs, &combined_mlp_commit, &eval_point, combined_mlp_eval, &proof.combined_mlp_eval_proof).unwrap();
+		// let combined_mlp_check = SamaritanMLPCS::<E>::verify(&srs, &combined_mlp_commit, &eval_point, combined_mlp_eval, &proof.combined_mlp_eval_proof).unwrap();
 
         // end_timer!(verifier_time);
         // Note that L_equality_check includes uv_equality_check, K_ext_hat_equality_check, S_equality_check, and deg_check together.
-        Ok(F_bar_equality_check && L_equality_check && combined_mlp_check && pairing_lhs_res == pairing_rhs_res)
+        
+        let mu_: usize = eval_point.len();
+        let kappa_ = (mu_ as f64).log2().round() as i32;
+        let nu_: i32 = (mu_ as i32)- kappa_;
+        let n_: usize = 2usize.pow(mu_ as u32);
+        let m_: usize = 2usize.pow(kappa_ as u32);
+        let l_: usize = 2usize.pow(nu_ as u32);
+        let max_deg_: usize = n_;
+
+        util::append_commitment_to_transcript::<E>(&mut transcript, b"v_hat_commit_mlp", &proof.v_hat_commit_mlp);
+
+        let gamma_ = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"gamma_");
+
+        util::append_field_element_to_transcript::<E>(&mut transcript, b"v_gamma_", &proof.v_gamma_);
+        util::append_commitment_to_transcript::<E>(&mut transcript, b"p_hat_commit_mlp", &proof.p_hat_commit_mlp);
+
+        let alpha_ = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"alpha_");
+
+        util::append_commitment_to_transcript::<E>(&mut transcript, b"b_hat_commit_mlp", &proof.b_hat_commit_mlp);
+        util::append_commitment_to_transcript::<E>(&mut transcript, b"u_hat_commit_mlp", &proof.u_hat_commit_mlp);
+
+        util::append_commitment_to_transcript::<E>(&mut transcript, b"t_hat_commit_mlp", &proof.t_hat_commit_mlp);
+        util::append_commitment_to_transcript::<E>(&mut transcript, b"s_hat_commit_mlp", &proof.s_hat_commit_mlp);
+
+        let phi = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"phi");
+
+        let psi_hat_X_zy_at_r_mlp = SamaritanMLPCS::<E>::evaluate_psi_hat_X_zy_at_delta(&eval_point, &r, kappa_ as usize, nu_ as usize);
+        let phi_hat_X_gamma_at_r_mlp = SamaritanMLPCS::<E>::evaluate_phi_hat_X_gamma_at_delta(&gamma_, &r, nu_ as usize);
+        let psi_hat_X_zx_at_r_mlp = SamaritanMLPCS::<E>::evaluate_psi_hat_X_zx_at_delta(&eval_point, &r, kappa_ as usize, nu_ as usize);
+
+        let deg_check_eval = -(epsilon.pow(&[2 as u64]) * r_inverse * (combined_mlp_eval + alpha_ * proof.v_gamma_) + epsilon.pow(&[3 as u64]) * r_inverse * proof.v_gamma_);
+
+        let comm_list = vec![
+	    			proof.K_ext_hat_commit.0, 
+	    			proof.H_bar_commit.0, proof.t_hat_commit.0, 
+	    			proof.A_hat_commit.0, proof.S_hat_commit.0, 
+	    			proof.t_hat_commit_mlp.0,  
+	    			proof.K_hat_commit.0, 
+	    			proof.h_hat_commit.0,
+	    			proof.v_hat_commit_mlp.0, 
+	    			proof.b_hat_commit_mlp.0,
+	    			proof.p_hat_commit_mlp.0, 
+	    			proof.u_hat_commit_mlp.0, 
+	    			combined_mlp_commit.0];
+	    let scalar_list = vec![
+	    			E::ScalarField::one(),
+	    			proof.W3 * phi, proof.W4 * phi,
+	    			(epsilon * epsilon * B_hat_delta_inv_eval + epsilon * e_hat_inv_eval) * phi, - (r * phi),
+	    			phi.pow(&[2 as u64]), 
+	    			- r.pow(&[(number_of_gates - m) as u64]) * phi.pow(&[2 as u64]), 
+	    			- r.pow(&[(number_of_gates - m + 1) as u64]) * epsilon.pow(&[1 as u64]) * phi.pow(&[2 as u64]),
+	    			- (psi_hat_X_zy_at_r_mlp + phi_hat_X_gamma_at_r_mlp * alpha_) * phi.pow(&[2 as u64]) * epsilon.pow(&[2 as u64]) * r_inverse.pow(&[l_ as u64]),
+	    			phi.pow(&[2 as u64]) * (epsilon.pow(&[2 as u64]) * r_inverse.pow(&[l_ as u64]) - epsilon.pow(&[8 as u64]) * r.pow(&[(n_-l_+1) as u64])),
+	    			phi.pow(&[2 as u64]) * (epsilon.pow(&[4 as u64]) * (r.pow(&[m_ as u64]) - gamma_).inverse().unwrap() - epsilon.pow(&[3 as u64]) * psi_hat_X_zx_at_r_mlp * r_inverse.pow(&[m_ as u64]) - epsilon.pow(&[6 as u64]) * r.pow(&[(n_ - m_) as u64])),
+	    			phi.pow(&[2 as u64]) * (epsilon.pow(&[3 as u64]) * r_inverse.pow(&[m_ as u64]) - epsilon.pow(&[7 as u64]) * r.pow(&[(n_ - m_ + 1) as u64])),
+	    			- phi.pow(&[2 as u64]) * (epsilon.pow(&[4 as u64]) * (r.pow(&[m_ as u64]) - gamma_).inverse().unwrap() + epsilon.pow(&[5 as u64]))];
+
+	    // phi_combined_univariates_commit is the computation of commitment of L_hat as a linear combination of other available commiments present in the proof 
+	    let phi_combined_univariates_commit = Commitment(E::G1::msm(&comm_list, &scalar_list).unwrap().into_affine());
+	    let phi_combined_eval = K_ext_hat_eval + combined_eval * phi + deg_check_eval * phi.pow(&[2 as u64]);
+
+	    let L_equality_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &phi_combined_univariates_commit, r, phi_combined_eval, &proof.L_hat_eval_proof).unwrap();
+
+        let pairing_lhs_first = E::G1Prepared::from(proof.t_hat_commit_mlp.0);
+        let pairing_lhs_second = srs.powers_of_h[max_deg_ - n_ + 1];
+        let pairing_lhs_res = E::pairing(pairing_lhs_first, pairing_lhs_second);
+
+        let pairing_rhs_first = E::G1Prepared::from(proof.s_hat_commit_mlp.0);
+        let pairing_rhs_second = srs.powers_of_h[0];
+        let pairing_rhs_res = E::pairing(pairing_rhs_first, pairing_rhs_second); 
+
+        // end_timer!(verifier_time);
+        Ok(F_bar_equality_check && L_equality_check && pairing_lhs_res == pairing_rhs_res)
 	}
 }
 #[cfg(test)]
@@ -747,7 +950,7 @@ mod tests {
     #[test]
     fn functionality_test() {
         let mut rng = &mut test_rng();
-        let log_number_of_gates = 4;
+        let log_number_of_gates = 15;
         let num_of_gates = 1 << log_number_of_gates;
 
         let mlp_a = DenseMultilinearExtension::rand(log_number_of_gates, rng);

@@ -42,7 +42,8 @@ pub struct HybridPlonkCircuit<E: Pairing> {
 	id_2 : DenseMultilinearExtension<E::ScalarField>,
 	id_3 : DenseMultilinearExtension<E::ScalarField>,
 }
-
+// with black-box use of Samaritan PCS, proof size is 20G1 + 20F + 5*loglogN F + (7G1+F), for loglogN=5, it becomes 27G1+46F=2.76KB assuming |G1|=48 bytes and |F|=32 bytes for BLS12-381
+// When per sumcheck round, instead of 5F elements, one G1 and one F element is sent, proof size becomes 20G1+20F+loglogN*(G1+F)+(7G1+F)
 pub struct HybridPlonkProof<E: Pairing> {
 	number_of_initial_rounds: usize,
 	w1_tilde_commit: Commitment<E>,

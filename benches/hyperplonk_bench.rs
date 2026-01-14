@@ -30,7 +30,7 @@ type HyperPlonk_Bls12_381 = HyperPlonk<Bls12_381>;
 // type HyperPlonk_Bn254 = HyperPlonk<Bn254>;
 
 fn prove_benchmark(c: &mut Criterion) {
-  for num_vars in (10..=20).step_by(2) {
+  for num_vars in (26..=27).step_by(2) {
     let mut group = c.benchmark_group("HyperPlonk_prove_benchmark");
 
     let n: usize = 1 << (num_vars - 1);
@@ -86,7 +86,7 @@ fn prove_benchmark(c: &mut Criterion) {
 }
 
 fn verify_benchmark(c: &mut Criterion) {
-  for num_vars in (10..=20).step_by(2) {
+  for num_vars in (16..=24).step_by(2) {
     let mut group = c.benchmark_group("HyperPlonk_verify_benchmark");
 
     let n: usize = 1 << (num_vars - 1);

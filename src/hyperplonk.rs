@@ -180,7 +180,7 @@ impl<E: Pairing> HyperPlonk<E> {
 
 		let mut first = E::ScalarField::one();
 		for i in 0..log_number_of_gates {
-			first *= E::ScalarField::one() - tau[i];
+			first *= one_minus_tau[i];
 		}
 		let mut evals: Vec<E::ScalarField> = vec![first; number_of_gates];
 		let mut bit_seq: Vec<i8> = vec![0; log_number_of_gates];
