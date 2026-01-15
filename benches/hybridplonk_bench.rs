@@ -30,7 +30,7 @@ type HybridPlonk_Bls12_381 = HybridPlonk<Bls12_381>;
 // type HybridPlonk_Bn254 = HybridPlonk<Bn254>;
 
 fn prove_benchmark(c: &mut Criterion) {
-  for num_vars in (16..=24).step_by(2) {
+  for num_vars in (14..=22).step_by(2) {
     let mut group = c.benchmark_group("HybridPlonk_prove_benchmark");
 
     let n: usize = 1 << (num_vars - 1);
@@ -86,7 +86,7 @@ fn prove_benchmark(c: &mut Criterion) {
 }
 
 fn verify_benchmark(c: &mut Criterion) {
-  for num_vars in (16..=24).step_by(2) {
+  for num_vars in (14..=22).step_by(2) {
     let mut group = c.benchmark_group("HybridPlonk_verify_benchmark");
 
     let n: usize = 1 << (num_vars - 1);

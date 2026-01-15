@@ -30,7 +30,7 @@ type VanillaSumcheck_Bls12_381 = VanillaSumcheck<Bls12_381>;
 // type HyperPlonk_Bn254 = HyperPlonk<Bn254>;
 
 fn prove_benchmark(c: &mut Criterion) {
-  for num_vars in (16..=24).step_by(2) {
+  for num_vars in (14..=22).step_by(2) {
     let mut group = c.benchmark_group("VanillaSumcheck_prove_benchmark");
 
     let n: usize = 1 << num_vars;
@@ -59,7 +59,7 @@ fn prove_benchmark(c: &mut Criterion) {
 }
 
 fn verify_benchmark(c: &mut Criterion) {
-  for num_vars in (16..=24).step_by(2) {
+  for num_vars in (14..=22).step_by(2) {
     let mut group = c.benchmark_group("VanillaSumcheck_verify_benchmark");
 
     let n: usize = 1 << num_vars;
