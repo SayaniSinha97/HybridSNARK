@@ -13,7 +13,10 @@ To run the tests, please run:
 ```
 cargo test --release
 ```
-This leads to functionality tests of all three implementations.
+This leads to functionality tests of all three implementations. One can also run a single test and observe the timings, by enabling the timer around prover and verifier in the corresponding file, and then running,
+```
+cargo test --release hybridplonk::tests::functionality_test -- --nocapture
+```
 
 # Run benchmarks
 To run the benchmark for hyperplonk (with Samaritan as underlying PCS), please run:
