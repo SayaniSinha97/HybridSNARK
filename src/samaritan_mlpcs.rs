@@ -439,7 +439,6 @@ impl<E: Pairing> SamaritanMLPCS<E>
         let q_hat = Self::compute_q_hat(&t_hat, &v_hat, &psi_hat_X_zy, &phi_hat_X_gamma, &psi_hat_X_zx, &b_hat, &u_hat, &f_hat, &p_hat, &alpha, &beta, &gamma, &delta, &delta_inverse, &eval, &v_gamma, l, m);
 
         let q_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &q_hat, delta).unwrap();
-        end_timer!(prover_time);
         
         let proof = SamaritanMLPCSEvalProof {
             v_hat_commit: v_hat_commit, 
@@ -455,6 +454,7 @@ impl<E: Pairing> SamaritanMLPCS<E>
             polys: vec![t_hat],
             degs: vec![n - 1],
         };
+        end_timer!(prover_time);
 
         Ok((proof, deg_check))
     }
@@ -505,6 +505,8 @@ impl<E: Pairing> SamaritanMLPCS<E>
         let q_hat_commit = Self::compute_q_hat_commit(srs.powers_of_g[0], &proof.t_hat_commit, &proof.v_hat_commit, &proof.p_hat_commit, &proof.b_hat_commit, &proof.u_hat_commit, &mlp_comm, psi_hat_X_zy_at_delta, phi_hat_X_gamma_at_delta, psi_hat_X_zx_at_delta, &alpha, &beta, &gamma, &delta, &delta_inverse, &value, &proof.v_gamma, l, m);
         
         let passed = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &q_hat_commit, delta, E::ScalarField::zero(), &proof.q_eval_proof).unwrap();
+
+        end_timer!(verifier_time);
 
         Ok(passed == true)
     }
