@@ -24,7 +24,7 @@ name = "hybridplonk_bench"
 harness = false
 
 [[bench]]
-name = "vanilla_sumcheck_bench"
+name = "hybridspartan_bench"
 harness = false
 
 [[bench]]

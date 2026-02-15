@@ -17,6 +17,7 @@ use ark_ff::PrimeField;
 use ark_serialize::CanonicalSerialize;
 use ark_poly_commit::PCCommitmentState;
 use crate::samaritan_mlpcs::*;
+use crate::degree_check::*;
 use crate::util;
 use ark_ec::VariableBaseMSM;
 use ark_ec::CurveGroup;
@@ -59,6 +60,7 @@ pub struct HyperPlonkProof<E: Pairing> {
 	eval_id3_at_alphas: E::ScalarField,
 	combined_mlp_eval_proof: SamaritanMLPCSEvalProof<E>,
 	coeffs: Vec<Vec<E::ScalarField>>,
+	deg_check_proof: DegreeCheckProof<E>,
 }
 
 pub struct HyperPlonk<E: Pairing> {
@@ -316,14 +318,19 @@ impl<E: Pairing> HyperPlonk<E> {
 		let seed = [42u8; 32];
 		let mut rng = StdRng::from_seed(seed);
 		
-		// let prover_time = start_timer!(|| format!("HyperPlonk::prove with log_number_of_gates {}", log_number_of_gates));
+		let prover_time = start_timer!(|| format!("HyperPlonk::prove with log_number_of_gates {}", log_number_of_gates));
 		let mut transcript = Transcript::new(b"HyperPlonk Transcript");
 
 		let w1_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &w1_tilde).unwrap();
+
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"w1_tilde_commit", &w1_tilde_commit);
+
 		let w2_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &w2_tilde).unwrap();
+
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"w2_tilde_commit", &w2_tilde_commit);
+
 		let w3_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &w3_tilde).unwrap();
+
 		util::append_commitment_to_transcript::<E>(&mut transcript, b"w3_tilde_commit", &w3_tilde_commit);
 
 		let beta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"beta");
@@ -381,6 +388,7 @@ impl<E: Pairing> HyperPlonk<E> {
 
 		let mut coeffs: Vec<_> = Vec::new();
 		let mut alphas: Vec<_> = Vec::new();
+
 		for i in 0..log_number_of_gates {
 			let d_plus_one_evaluation_points = (1..=5).map(|x| E::ScalarField::from(x as u64)).collect::<Vec<_>>();
 			if i > 0 {
@@ -415,7 +423,9 @@ impl<E: Pairing> HyperPlonk<E> {
 							eval_u_0_tilde_at_alphas, eval_sigma1_at_alphas, eval_sigma2_at_alphas, eval_sigma3_at_alphas, eval_id1_at_alphas, eval_id2_at_alphas, eval_id3_at_alphas, &alphas, beta, gamma, xi, &tau);
 
 		let combined_mlp_eval = combined_mlp.evaluate(&alphas);
-		let combined_mlp_eval_proof = SamaritanMLPCS::<E>::prove(&srs, &combined_mlp, &alphas, combined_mlp_eval, &mut rng).unwrap();
+
+		let (combined_mlp_eval_proof, deg_check) = SamaritanMLPCS::<E>::prove(&srs, &combined_mlp, &alphas, combined_mlp_eval, &mut rng).unwrap();
+		let deg_check_proof = DegreeCheck::<E>::prove(&srs, &deg_check).unwrap();
 
 		let proof = HyperPlonkProof{
 			num_rounds: log_number_of_gates,
@@ -438,8 +448,9 @@ impl<E: Pairing> HyperPlonk<E> {
 			eval_id3_at_alphas,
 			combined_mlp_eval_proof,
 			coeffs,
+			deg_check_proof,
 		};
-		// end_timer!(prover_time);
+		end_timer!(prover_time);
 		Ok(proof)
 	}
 
@@ -447,7 +458,7 @@ impl<E: Pairing> HyperPlonk<E> {
 		qM_comm: Commitment<E>, qL_comm: Commitment<E>, qR_comm: Commitment<E>, qO_comm: Commitment<E>, qC_comm:Commitment<E>, 
         	sigma1_comm: Commitment<E>, sigma2_comm: Commitment<E>, sigma3_comm: Commitment<E>, 
         	id1_comm: Commitment<E>, id2_comm: Commitment<E>, id3_comm: Commitment<E>) -> Result<bool, Error> {
-		// let verifier_time = start_timer!(|| format!("HyperPlonk::verify with multilinear polynomial"));
+		let verifier_time = start_timer!(|| format!("HyperPlonk::verify with multilinear polynomial"));
 
         let mut transcript = Transcript::new(b"HyperPlonk Transcript");
 
@@ -495,10 +506,12 @@ impl<E: Pairing> HyperPlonk<E> {
 		let combined_mlp_commit = Commitment(E::G1::msm(&comm_list, &scalar_list).unwrap().into_affine());
 		let combined_mlp_eval = cur_eval_value + eval_eq_tilde_at_alphas * xi * (proof.eval_w1_tilde_at_alphas + beta * proof.eval_id1_at_alphas + gamma) * (proof.eval_w2_tilde_at_alphas + beta * proof.eval_id2_at_alphas + gamma) * (proof.eval_w3_tilde_at_alphas + beta * proof.eval_id3_at_alphas + gamma);
 		let combined_mlp_check = SamaritanMLPCS::<E>::verify(&srs, &combined_mlp_commit, &alphas, combined_mlp_eval, &proof.combined_mlp_eval_proof).unwrap();
-		assert_eq!(combined_mlp_check, true);
+		// assert_eq!(combined_mlp_check, true);
 
-        // end_timer!(verifier_time);
-        Ok(combined_mlp_check == true)
+		let deg_check_verify = DegreeCheck::<E>::verify(&srs, &proof.deg_check_proof).unwrap();
+
+        end_timer!(verifier_time);
+        Ok(combined_mlp_check == true && deg_check_verify == true)
 	}
 }
 
@@ -527,7 +540,7 @@ mod tests {
     	let mut rng = &mut test_rng();
     	// n is the dimension of each of the two vectors (A and B) participating in inner product. (2*n) is the number of gates in the circuit. 2^(n+1) is the size of 
     	// evaluation vecs of each mlp. In short #vars = (n + 1).
-		let n: usize = 1 << 14;
+		let n: usize = 1 << 17;
 		let mut rng = &mut test_rng();
 		let A: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
 		let B: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();

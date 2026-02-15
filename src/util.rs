@@ -53,3 +53,21 @@ pub(crate) fn append_commitment_to_transcript<E: Pairing>(transcript: &mut Trans
     transcript.append_message(label, &buf);
     // end_timer!(time);
 }
+
+pub(crate) fn append_commitment_to_transcript_with_index<E: Pairing>(transcript: &mut Transcript, label: &'static [u8], index: Option<usize>, commitment: &Commitment<E>) {
+    // let time = start_timer!(|| format!("function: append_commitment_to_transcript"));
+    let mut buf = Vec::new();
+    if let Some(ind) = index {
+        buf.extend_from_slice(&ind.to_le_bytes());
+    }
+    commitment.serialize_compressed(&mut buf).expect("serialization failed");
+    transcript.append_message(label, &buf);
+    // end_timer!(time);
+}
+
+pub(crate) fn fe_to_index<E: Pairing>(val: E::ScalarField) -> usize {
+    let ind = val.into_bigint();
+    let limbs = ind.as_ref();
+    debug_assert!(limbs[1..].iter().all(|&w| w == 0));
+    limbs[0] as usize
+}

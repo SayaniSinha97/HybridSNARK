@@ -24,6 +24,7 @@ use ark_ec::ScalarMul;
 use ark_std::collections::BTreeMap;
 use ark_ff::FftField;
 use crate::util;
+use crate::degree_check::*;
 
 // the structure of SRS for Samaritan multilinear PCS, consists of [g, g\tau, g\tau^2,...] and [h, h\tau, h\tau^2,...], where g and h are random generators of G1 and G2
 pub struct SamaritanMLPCS_SRS<E: Pairing> {
@@ -44,7 +45,6 @@ pub struct SamaritanMLPCSEvalProof<E: Pairing> {
     b_hat_commit: Commitment<E>,
     u_hat_commit: Commitment<E>,
     t_hat_commit: Commitment<E>,
-    s_hat_commit: Commitment<E>,
     q_eval_proof: KZG10EvalProof<E>,
 }
 
@@ -237,11 +237,21 @@ impl<E: Pairing> SamaritanMLPCS<E>
     pub(crate) fn compute_t_hat(v_psi_phi_combined: &DensePolynomial<E::ScalarField>, b_hat: &DensePolynomial<E::ScalarField>, eval: &E::ScalarField, v_gamma: &E::ScalarField, alpha: &E::ScalarField, gamma: &E::ScalarField, p_psi_combined: &DensePolynomial<E::ScalarField>, u_hat: &DensePolynomial<E::ScalarField>, f_hat: &DensePolynomial<E::ScalarField>, p_hat: &DensePolynomial<E::ScalarField>, beta: &E::ScalarField, l: usize, m: usize) -> DensePolynomial<E::ScalarField> {
         let mid_term1 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); l - 1], vec![E::ScalarField::from(*eval + (*alpha * v_gamma))]].concat());
         let mut first_term_in_t_hat = v_psi_phi_combined - &mid_term1 - b_hat;
-        first_term_in_t_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(first_term_in_t_hat.coeffs()[l..].to_vec());
+        if (first_term_in_t_hat.coeffs().len() >= l){
+            first_term_in_t_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(first_term_in_t_hat.coeffs()[l..].to_vec());
+        }
+        else{
+            first_term_in_t_hat = DensePolynomial::<E::ScalarField>::zero();
+        }
 
         let mid_term2 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); m - 1], vec![E::ScalarField::from(*v_gamma)]].concat());
         let mut second_term_in_t_hat = (p_psi_combined - &mid_term2 - u_hat) * (*beta);
-        second_term_in_t_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(second_term_in_t_hat.coeffs()[m..].to_vec());
+        if (second_term_in_t_hat.coeffs().len() >= m) {
+            second_term_in_t_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(second_term_in_t_hat.coeffs()[m..].to_vec());
+        }
+        else{
+            second_term_in_t_hat = DensePolynomial::<E::ScalarField>::zero();
+        }
 
         let mut third_term_in_t_hat = (f_hat - p_hat) * ((*beta).pow(&[2 as u64]));
         let mut third_term_coeffs = (&third_term_in_t_hat).coeffs.clone();
@@ -329,8 +339,8 @@ impl<E: Pairing> SamaritanMLPCS<E>
         point: &Vec<E::ScalarField>,
         eval: E::ScalarField,
         rng: &mut dyn RngCore,
-    ) -> Result<SamaritanMLPCSEvalProof<E>, Error> {
-        // let prover_time = start_timer!(|| format!("SamaritanMLPCS::prove with multilinear polynomial of maximum variables {}", multi_linear_poly.num_vars));
+    ) -> Result<(SamaritanMLPCSEvalProof<E>, DegreeCheckPolynomials<E>), Error> {
+        let prover_time = start_timer!(|| format!("SamaritanMLPCS::prove with multilinear polynomial of maximum variables {}", multi_linear_poly.num_vars));
 
         let seed = [42u8; 32];
         let mut rng2 = StdRng::from_seed(seed);
@@ -343,7 +353,7 @@ impl<E: Pairing> SamaritanMLPCS<E>
         let l: usize = 2usize.pow(nu as u32);
         let max_deg: usize = n;
 
-        // println!("mu: {}, kappa: {}, nu: {}, n: {}, m: {}, l: {}, max_deg: {}", mu, kappa, nu, n, m, l, max_deg);
+        // println!("mu: {}, kappa: {}, nu: {}, n: {}, m: {}, l: {}, max_deg: {}, multi_linear_poly size: {}", mu, kappa, nu, n, m, l, max_deg, multi_linear_poly.to_evaluations().to_vec().len());
 
         let f_hat = Self::get_univariate_from_multilinear(&multi_linear_poly);
 
@@ -390,8 +400,11 @@ impl<E: Pairing> SamaritanMLPCS<E>
         let v_psi_phi_combined = &v_hat * (&psi_hat_X_zy + (&phi_hat_X_gamma) * alpha);
 
         // extract necessary (l-1) terms in b_hat
-        let least_coeffs = v_psi_phi_combined.coeffs()[..(l-1)].to_vec();
-        let b_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(least_coeffs);
+        let mut b_hat = DensePolynomial::<E::ScalarField>::zero();
+        if (v_psi_phi_combined.coeffs().len() >= l-1) {
+            let least_coeffs = v_psi_phi_combined.coeffs()[..(l-1)].to_vec();
+            b_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(least_coeffs);
+        }
 
         // compute commitment to b_hat
         let b_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &b_hat).unwrap();
@@ -405,8 +418,11 @@ impl<E: Pairing> SamaritanMLPCS<E>
         let p_psi_combined = &p_hat * &psi_hat_X_zx;
 
         // extract necessary (m-1) number of terms in u_hat
-        let selected_coeffs = p_psi_combined.coeffs()[..(m - 1)].to_vec();
-        let u_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(selected_coeffs);
+        let mut u_hat = DensePolynomial::<E::ScalarField>::zero();
+        if (p_psi_combined.coeffs().len() >= m-1) {
+            let selected_coeffs = p_psi_combined.coeffs()[..(m - 1)].to_vec();
+            u_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec(selected_coeffs);
+        }
 
         let u_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &u_hat).unwrap();
         util::append_commitment_to_transcript::<E>(&mut transcript, b"u_hat_commit", &u_hat_commit);
@@ -417,29 +433,30 @@ impl<E: Pairing> SamaritanMLPCS<E>
         let t_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &t_hat).unwrap();
         util::append_commitment_to_transcript::<E>(&mut transcript, b"t_hat_commit", &t_hat_commit);
 
-        let s_hat = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); max_deg - n + 1], t_hat.coeffs().to_vec()].concat());
-
-        let s_hat_commit = SamaritanMLPCS::<E>::kzg10_commit_G1(&srs, &s_hat).unwrap();
-        util::append_commitment_to_transcript::<E>(&mut transcript, b"s_hat_commit", &s_hat_commit);
-
         let delta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"delta");
         let delta_inverse = delta.inverse().unwrap();
 
         let q_hat = Self::compute_q_hat(&t_hat, &v_hat, &psi_hat_X_zy, &phi_hat_X_gamma, &psi_hat_X_zx, &b_hat, &u_hat, &f_hat, &p_hat, &alpha, &beta, &gamma, &delta, &delta_inverse, &eval, &v_gamma, l, m);
 
         let q_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &q_hat, delta).unwrap();
-        // end_timer!(prover_time);
+        end_timer!(prover_time);
         
-        Ok(SamaritanMLPCSEvalProof {
+        let proof = SamaritanMLPCSEvalProof {
             v_hat_commit: v_hat_commit, 
             v_gamma: v_gamma, 
             p_hat_commit: p_hat_commit, 
             b_hat_commit: b_hat_commit, 
             u_hat_commit: u_hat_commit, 
             t_hat_commit: t_hat_commit, 
-            s_hat_commit: s_hat_commit, 
             q_eval_proof: q_eval_proof
-        })
+        };
+
+        let deg_check = DegreeCheckPolynomials {
+            polys: vec![t_hat],
+            degs: vec![n - 1],
+        };
+
+        Ok((proof, deg_check))
     }
 
     pub fn verify(
@@ -457,7 +474,7 @@ impl<E: Pairing> SamaritanMLPCS<E>
         let l: usize = 2usize.pow(nu as u32);
         let max_deg: usize = n;
 
-        // let verifier_time = start_timer!(|| format!("SamaritanMLPCS::verify with multilinear polynomial"));
+        let verifier_time = start_timer!(|| format!("SamaritanMLPCS::verify with multilinear polynomial"));
         
         let mut transcript = Transcript::new(b"SamaritanMLPCS Transcript");
 
@@ -476,7 +493,7 @@ impl<E: Pairing> SamaritanMLPCS<E>
         let beta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"beta");
 
         util::append_commitment_to_transcript::<E>(&mut transcript, b"t_hat_commit", &proof.t_hat_commit);
-        util::append_commitment_to_transcript::<E>(&mut transcript, b"s_hat_commit", &proof.s_hat_commit);
+        // util::append_commitment_to_transcript::<E>(&mut transcript, b"s_hat_commit", &proof.s_hat_commit);
 
         let delta = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"delta");
         let delta_inverse = delta.inverse().unwrap();
@@ -489,17 +506,7 @@ impl<E: Pairing> SamaritanMLPCS<E>
         
         let passed = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &q_hat_commit, delta, E::ScalarField::zero(), &proof.q_eval_proof).unwrap();
 
-        let pairing_lhs_first = E::G1Prepared::from(proof.t_hat_commit.0);
-        let pairing_lhs_second = srs.powers_of_h[max_deg - n + 1];
-        let pairing_lhs_res = E::pairing(pairing_lhs_first, pairing_lhs_second);
-
-        let pairing_rhs_first = E::G1Prepared::from(proof.s_hat_commit.0);
-        let pairing_rhs_second = srs.powers_of_h[0];
-        let pairing_rhs_res = E::pairing(pairing_rhs_first, pairing_rhs_second);
-
-        let valid = (passed == true) && (pairing_lhs_res == pairing_rhs_res);
-        // end_timer!(verifier_time);
-        Ok(valid)
+        Ok(passed == true)
     }
 }
 
@@ -509,28 +516,69 @@ mod tests {
     use ark_poly_commit::kzg10::*;
     use ark_poly_commit::*;
     use ark_ec::pairing::Pairing;
-    use ark_bls12_381::Bls12_381;
-    use ark_bls12_381::Fr;
-    // use ark_bn254::Bn254;
-    // use ark_bn254::Fr;
+    // use ark_bls12_381::Bls12_381;
+    // use ark_bls12_381::Fr;
+    use ark_bn254::Bn254;
+    use ark_bn254::Fr;
     use ark_std::test_rng;
     use crate::samaritan_mlpcs::*;
 
-    type SamaritanMLPCS_Bls12_381 = SamaritanMLPCS<Bls12_381>;
-    // type SamaritanMLPCS_Bn254 = SamaritanMLPCS<Bn254>;
+    // type SamaritanMLPCS_Bls12_381 = SamaritanMLPCS<Bls12_381>;
+    type SamaritanMLPCS_Bn254 = SamaritanMLPCS<Bn254>;
 
     #[test]
     fn functionality_test() {
+
+        /* Below commented lines are just to check the order of coefficients expected in the polynomial. The univariate polynomial my_poly constructed from vector 
+            [2,1,5,3] is basically 2 + x + 5x^2 + 3x^3; and hence it correctly gets evaluated to value 48, at point x = 2. 
+            This is not directly related to Samaritan, but for a sanity check of arkworks DensePolynomial functionality. */
+        // let coeffs = vec![Fr::from(2 as u64), Fr::from(1 as u64), Fr::from(5 as u64), Fr::from(3 as u64)];
+        // let my_poly = DensePolynomial::<Fr>::from_coefficients_vec(coeffs);
+        // let value = my_poly.evaluate(&Fr::from(2 as u64));
+        // assert_eq!(value, Fr::from(48 as u64));
+
+        /* the test starts. */
+
         let mut rng = &mut test_rng();
-        let num_vars = 10;
+        let num_vars = 18;
         let mlp = DenseMultilinearExtension::rand(num_vars, rng);
         // println!("mlp: {:?}", mlp);
 
+        //===============================================
+
+        // // the setup of SamaritanMLPCS
+        // let srs = SamaritanMLPCS_Bls12_381::setup(num_vars, &mut rng).unwrap();
+
+        // // the commit of SamaritanMLPCS: commit to multilinear polynomial mlp, viewed as univariate polynomial f_hat, f_hat_commit is output by it.
+        // let comm = SamaritanMLPCS_Bls12_381::commit_G1(&srs, &mlp).unwrap();
+
+        // // sampling a random point (basically mu number of field elements for mu-variate multilinear polynomial) and evaluate the polynomial at that point
+        // let point: Vec<_> = (0..num_vars).map(|_| Fr::rand(rng)).collect();
+
+        // let eval = mlp.evaluate(&point);
+
+        // // println!("At point: {:?}, eval is: {:?}", point, eval);
+                
+        // // run the interactive prover of SamaritanMLPCS to do a proof of evaluation to show mlp(point) = eval 
+        // let (eval_proof, deg_check) = SamaritanMLPCS_Bls12_381::prove(&srs, &mlp, &point, eval, &mut rng).expect("something went wrong in proving");
+
+        // // run the interactive verifier of SamaritanMLPCS to verify the proof of mlp(point) = eval
+        // let valid = SamaritanMLPCS_Bls12_381::verify(&srs, &comm, &point, eval, &eval_proof).unwrap();
+        
+        // assert_eq!(valid, true);
+
+        // let deg_check_proof = DegreeCheck::<Bls12_381>::prove(&srs, &deg_check).unwrap();
+        // let valid_deg_check = DegreeCheck::<Bls12_381>::verify(&srs, &deg_check_proof).unwrap();
+
+        // assert_eq!(valid_deg_check, true);
+
+        //==================================================
+
         // the setup of SamaritanMLPCS
-        let srs = SamaritanMLPCS_Bls12_381::setup(num_vars, &mut rng).unwrap();
+        let srs = SamaritanMLPCS_Bn254::setup(num_vars, &mut rng).unwrap();
 
         // the commit of SamaritanMLPCS: commit to multilinear polynomial mlp, viewed as univariate polynomial f_hat, f_hat_commit is output by it.
-        let comm = SamaritanMLPCS_Bls12_381::commit_G1(&srs, &mlp).unwrap();
+        let comm = SamaritanMLPCS_Bn254::commit_G1(&srs, &mlp).unwrap();
 
         // sampling a random point (basically mu number of field elements for mu-variate multilinear polynomial) and evaluate the polynomial at that point
         let point: Vec<_> = (0..num_vars).map(|_| Fr::rand(rng)).collect();
@@ -540,12 +588,17 @@ mod tests {
         // println!("At point: {:?}, eval is: {:?}", point, eval);
                 
         // run the interactive prover of SamaritanMLPCS to do a proof of evaluation to show mlp(point) = eval 
-        let eval_proof = SamaritanMLPCS_Bls12_381::prove(&srs, &mlp, &point, eval, &mut rng).expect("something went wrong in proving");
+        let (eval_proof, deg_check) = SamaritanMLPCS_Bn254::prove(&srs, &mlp, &point, eval, &mut rng).expect("something went wrong in proving");
 
         // run the interactive verifier of SamaritanMLPCS to verify the proof of mlp(point) = eval
-        let valid = SamaritanMLPCS_Bls12_381::verify(&srs, &comm, &point, eval, &eval_proof).unwrap();
+        let valid = SamaritanMLPCS_Bn254::verify(&srs, &comm, &point, eval, &eval_proof).unwrap();
         
         assert_eq!(valid, true);
+
+        let deg_check_proof = DegreeCheck::<Bn254>::prove(&srs, &deg_check).unwrap();
+        let valid_deg_check = DegreeCheck::<Bn254>::verify(&srs, &deg_check_proof).unwrap();
+
+        assert_eq!(valid_deg_check, true);
     }
 
 }

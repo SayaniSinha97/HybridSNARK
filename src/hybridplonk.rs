@@ -305,10 +305,14 @@ impl<E: Pairing> HybridPlonk<E> {
 			 sigma_1_copy, sigma_2_copy, sigma_3_copy, 
 			 id_1_copy, id_2_copy, id_3_copy, 
 			 v_0_tilde_copy, v_1_tilde_copy, u_0_tilde_copy, u_1_tilde_copy} */
+		// println!("inside compute_univariate_r_X_evaluation");
 		let mut tmp : Vec<_> = Vec::new();
 		let mut i = 0;
 		for mlp in mlp_set.iter_mut() {
+			// println!("mlp: {:?}", mlp.to_evaluations());
 			let tmp_poly = (*mlp).fix_variables(&[eval_point]);
+			// println!("mlp: {:?}", mlp.to_evaluations());
+			// println!("tmp_poly: {:?}", tmp_poly.to_evaluations());
 			tmp.push(tmp_poly);
 			i += 1;
 		}
@@ -498,60 +502,6 @@ impl<E: Pairing> HybridPlonk<E> {
 		S_hat
 	}
 
-	// This function combines the degree check equations for both Samaritan MLPCS and unrolled Hybridplonk. This polynomial is batched version of the following polynomials,
-	// batched with increasing powers of \epsilon:
-	// t_hat_mlp = u0_hat + epsilon * u1_hat + epsilon^2 * v0_hat + epsilon^3 * v1_hat + epsilon^4 * X^(n-m) * K_hat + epsilon^5 * X^(n-m+1) * h_hat
-	// Till this point it is the degree check equation of Hybridplonk, but t_hat_mlp has even other terms due to unrolling of Samaritan MLPCS degree checks, as follows:
-	// + epsilon^6 * X^-l_ * (v_psi_phi_combined - (eval + alpha * v_gamma) * X^-(l_-1) - b_hat)
-	// + epsilon^7 * X^-m_ * (p_psi_combined - v_gamma * X^-(m_-1) - u_hat)
-	// + epsilon^8 * (X^m_ - gamma)^-1 * (f_hat - p_hat) + epsilon^9 * f_hat + epsilon^10 * X^(n_-m_) * p_hat + epsilon^11 * X^(n_-m_+1) * u_hat + epsilon^12 * X^(n_-l_+1) * b_hat
-
-	// pub(crate) fn compute_t_hat_mlp(u0_hat: &DensePolynomial<E::ScalarField>, u1_hat: &DensePolynomial<E::ScalarField>, 
-	// 	v0_hat: &DensePolynomial<E::ScalarField>, v1_hat: &DensePolynomial<E::ScalarField>, 
-	// 	K_hat: &DensePolynomial<E::ScalarField>, h_hat: &DensePolynomial<E::ScalarField>, 
-	// 	v_psi_phi_combined: &DensePolynomial<E::ScalarField>, b_hat: &DensePolynomial<E::ScalarField>,
-	// 	p_psi_combined: &DensePolynomial<E::ScalarField>, u_hat: &DensePolynomial<E::ScalarField>, 
-	// 	f_hat: &DensePolynomial<E::ScalarField>, p_hat: &DensePolynomial<E::ScalarField>,
-	// 	eval: E::ScalarField, v_gamma: E::ScalarField, alpha: E::ScalarField, gamma: E::ScalarField,
-	// 	epsilon: E::ScalarField, n: usize, m: usize, l_: usize, m_: usize) -> DensePolynomial<E::ScalarField> {
-
-	// 	let d_hat = u0_hat + u1_hat * epsilon + v0_hat * epsilon.pow(&[2 as u64]) + v1_hat * epsilon.pow(&[3 as u64]) 
-	// 		+ &DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); n - m], K_hat.coeffs().to_vec()].concat().to_vec()) * epsilon.pow(&[4 as u64])
-	// 		+ &DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); n - m + 1], h_hat.coeffs().to_vec()].concat().to_vec()) * epsilon.pow(&[5 as u64]);
-		
-	// 	let mid_term1 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); l_ - 1], vec![E::ScalarField::from(eval + (alpha * v_gamma))]].concat());
-    //     let mut new_term_1 = (v_psi_phi_combined - &mid_term1 - b_hat) * epsilon.pow(&[6 as u64]);
-    //     new_term_1 = DensePolynomial::<E::ScalarField>::from_coefficients_vec(new_term_1.coeffs()[l_..].to_vec());
-
-    //     let mid_term2 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); m_ - 1], vec![E::ScalarField::from(v_gamma)]].concat());
-    //     let mut new_term_2 = (p_psi_combined - &mid_term2 - u_hat) * epsilon.pow(&[7 as u64]);
-    //     new_term_2 = DensePolynomial::<E::ScalarField>::from_coefficients_vec(new_term_2.coeffs()[m_..].to_vec());
-
-    //     let mut new_term_3 = (f_hat - p_hat) * epsilon.pow(&[8 as u64]);
-    //     let mut third_term_coeffs = (&new_term_3).coeffs.clone();
-    //     for i in (m_..third_term_coeffs.len()).rev() {
-    //         let quotient = third_term_coeffs[i];
-    //         third_term_coeffs[i - m_] += quotient * gamma;
-    //     }
-    //     third_term_coeffs = third_term_coeffs[m_..].to_vec();//  truncate(third_term_coeffs.len() - m_);
-    //     new_term_3 = DensePolynomial::<E::ScalarField>::from_coefficients_vec(third_term_coeffs);
-
-    //     let new_term_4 = f_hat * epsilon.pow(&[9 as u64]);
-
-    //     let mut new_term_5 = p_hat * epsilon.pow(&[10 as u64]);
-    //     new_term_5 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); (m_ * l_) - m_], (&new_term_5).coeffs().to_vec()].concat());
-
-    //     let mut new_term_6 = u_hat * epsilon.pow(&[11 as u64]);
-    //     new_term_6 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); (m_ * l_) - m_ + 1], (&new_term_6).coeffs().to_vec()].concat());
-
-	// 	let mut new_term_7 = b_hat * epsilon.pow(&[12 as u64]);
-    //     new_term_7 = DensePolynomial::<E::ScalarField>::from_coefficients_vec([vec![E::ScalarField::zero(); (m_ * l_) - l_ + 1], (&new_term_7).coeffs().to_vec()].concat());
-
-	// 	let t_hat_mlp = d_hat + new_term_1 + new_term_2 + new_term_3 + new_term_4 + new_term_5 + new_term_6 + new_term_7;
-
-	// 	t_hat_mlp
-	// }
-
 	pub fn compute_K_ext_hat_commit(srs: &SamaritanMLPCS_SRS<E>, K_hat: &DensePolynomial<E::ScalarField>, number_of_initial_rounds: usize) -> Commitment<E> {
 		let mut modified_bases = Vec::new();
 		let rep_count = 1 << number_of_initial_rounds;
@@ -562,10 +512,8 @@ impl<E: Pairing> HybridPlonk<E> {
 			}
 			modified_bases.push(tmp.into_affine());
 		}
-		let K_ext_hat_commit_time = start_timer!(||format!("msm"));
-		let c = Commitment(E::G1::msm(&modified_bases, &K_hat.coeffs()).unwrap().into_affine());
-		end_timer!(K_ext_hat_commit_time);
-		c
+		let comm = Commitment(E::G1::msm(&modified_bases, &K_hat.coeffs()).unwrap().into_affine());
+		comm
 	}
 
 	pub fn compute_t_hat_mlp_and_its_commit(srs: &SamaritanMLPCS_SRS<E>, u0_hat: &DensePolynomial<E::ScalarField>, u0_hat_commit: &Commitment<E>, 
@@ -632,7 +580,7 @@ impl<E: Pairing> HybridPlonk<E> {
 	}
 
 	pub fn prove(ckt: &HybridPlonkCircuit<E>, w1_tilde: &DenseMultilinearExtension<E::ScalarField>, w2_tilde: &DenseMultilinearExtension<E::ScalarField>, w3_tilde: &DenseMultilinearExtension<E::ScalarField>, srs: &SamaritanMLPCS_SRS<E>) -> Result<HybridPlonkProof<E>, Error> {
-		// let prover_time = start_timer!(|| format!("HybridPlonk::prove with log_number_of_gates {}", ckt.log_number_of_gates));
+		let prover_time = start_timer!(|| format!("HybridPlonk::prove with log_number_of_gates {}", ckt.log_number_of_gates));
 
 		let log_number_of_gates = ckt.log_number_of_gates;
 		let number_of_gates = 1 << log_number_of_gates;
@@ -1071,7 +1019,7 @@ impl<E: Pairing> HybridPlonk<E> {
 		    s_hat_commit_mlp,
 		    L_hat_eval_proof,
 		};
-		// end_timer!(prover_time);
+		end_timer!(prover_time);
 		Ok(proof)
 	}
 
@@ -1079,7 +1027,7 @@ impl<E: Pairing> HybridPlonk<E> {
 		qM_comm: Commitment<E>, qL_comm: Commitment<E>, qR_comm: Commitment<E>, qO_comm: Commitment<E>, qC_comm:Commitment<E>, 
         	sigma1_comm: Commitment<E>, sigma2_comm: Commitment<E>, sigma3_comm: Commitment<E>, 
         	id1_comm: Commitment<E>, id2_comm: Commitment<E>, id3_comm: Commitment<E>) -> Result<bool, Error> {
-		// let verifier_time = start_timer!(|| format!("HybridPlonk::verify with multilinear polynomial"));
+		let verifier_time = start_timer!(|| format!("HybridPlonk::verify with multilinear polynomial"));
 
         let mut transcript = Transcript::new(b"HybridPlonk Transcript");
 
@@ -1278,7 +1226,7 @@ impl<E: Pairing> HybridPlonk<E> {
         let pairing_rhs_second = srs.powers_of_h[0];
         let pairing_rhs_res = E::pairing(pairing_rhs_first, pairing_rhs_second); 
 
-        // end_timer!(verifier_time);
+        end_timer!(verifier_time);
         // Note that L_equality_check includes uv_equality_check, K_ext_hat_equality_check, S_equality_check, and deg_check together.
         Ok(F_bar_equality_check && L_equality_check && pairing_lhs_res == pairing_rhs_res)
 
@@ -1312,7 +1260,7 @@ mod tests {
     	let mut rng = &mut test_rng();
         // n is the dimension of each of the two vectors (A and B) participating in inner product. (2*n) is the number of gates in the circuit. 2^(n+1) is the size of
     	// evaluation vecs of each mlp. In short #vars = (n + 1).
-    	let n: usize = 1 << 19;
+    	let n: usize = 1 << 17;
     	let A: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
     	let B: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
     	let myckt: HybridPlonkCircuit::<Bls12_381> = HybridPlonk_Bls12_381::generate_circuit_for_inner_product(&A, &B, n);
