@@ -305,14 +305,10 @@ impl<E: Pairing> HybridPlonk<E> {
 			 sigma_1_copy, sigma_2_copy, sigma_3_copy, 
 			 id_1_copy, id_2_copy, id_3_copy, 
 			 v_0_tilde_copy, v_1_tilde_copy, u_0_tilde_copy, u_1_tilde_copy} */
-		// println!("inside compute_univariate_r_X_evaluation");
 		let mut tmp : Vec<_> = Vec::new();
 		let mut i = 0;
 		for mlp in mlp_set.iter_mut() {
-			// println!("mlp: {:?}", mlp.to_evaluations());
 			let tmp_poly = (*mlp).fix_variables(&[eval_point]);
-			// println!("mlp: {:?}", mlp.to_evaluations());
-			// println!("tmp_poly: {:?}", tmp_poly.to_evaluations());
 			tmp.push(tmp_poly);
 			i += 1;
 		}

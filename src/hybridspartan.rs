@@ -247,7 +247,7 @@ impl<E: Pairing> HybridSpartan<E> {
 		//======================================================================================================================
 		// compute id_tilde
 
-		let id = (1..=num_total_nonzero_entries).map(|i| E::ScalarField::from(i as u64)).collect();
+		let id = (0..num_total_nonzero_entries).map(|i| E::ScalarField::from(i as u64)).collect();
 		let id_tilde = DenseMultilinearExtension::<E::ScalarField>::from_evaluations_vec(log_num_total_nonzero_entries, id);
 		let id_tilde_commit = SamaritanMLPCS::<E>::commit_G1(&srs, &id_tilde).unwrap();
 

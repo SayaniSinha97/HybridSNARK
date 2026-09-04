@@ -65,7 +65,6 @@ pub struct GenericImprovedSumcheckProof<E: Pairing> {
 	coeffs: Vec<Vec<E::ScalarField>>,
 	g_hat_commit: Commitment<E>,
 	h_hat_commit: Commitment<E>,
-	rem_const: E::ScalarField,
 	small_poly_evals_at_z: Vec<E::ScalarField>,
 	g_hat_h_hat_correctness_eval_proof: KZG10EvalProof<E>,
 	beta_power_combined_smaller_mlp_commit: Commitment<E>,
@@ -74,10 +73,12 @@ pub struct GenericImprovedSumcheckProof<E: Pairing> {
 	A_hat_z_commit: Commitment<E>,
 	S_hat_commit: Commitment<E>,
 	v_eta: E::ScalarField,
+	v_eta_eval_proof: KZG10EvalProof<E>,
 	p_hat_inv_eval: E::ScalarField,
 	A_hat_z_inv_eval: E::ScalarField,
 	S_hat_inv_eval: E::ScalarField,
 	S_equality_left_eval_proof: KZG10EvalProof<E>,
+	c_hat_eval_proof: KZG10EvalProof<E>,
 	deg_check_proof: DegreeCheckProof<E>,
 }
 
@@ -398,7 +399,9 @@ impl<E: Pairing> GenericImprovedSumcheck<E> {
 
 	    // this evaluation of v_eta and corresponding univariate check from phase-2 is batched within univarate check of phase-3
 	    let beta_power_combined_smaller_ext_univ = DensePolynomial::<E::ScalarField>::from_coefficients_vec(beta_power_combined_smaller_mlp_ext.to_evaluations());
-		let v_eta = beta_power_combined_smaller_univ.evaluate(&r.pow(&[(1 << num_initial_rounds) as u64]));
+		let r_power_s = r.pow(&[(1 << num_initial_rounds) as u64]);
+		let v_eta = beta_power_combined_smaller_univ.evaluate(&r_power_s);
+		let v_eta_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &beta_power_combined_smaller_univ, r_power_s).unwrap();
 		
 	    let p_hat_inv_eval = p_hat.evaluate(&r_inverse);
 	    let A_hat_z_inv_eval = A_hat_z.evaluate(&r_inverse);
@@ -413,6 +416,10 @@ impl<E: Pairing> GenericImprovedSumcheck<E> {
 
 	    let S_equality_left = (&p_hat * A_hat_z_inv_eval + &A_hat_z * p_hat_inv_eval) + &A_hat_z * B_hat_z_inv_delta_eval * epsilon - &S_hat * r + beta_power_combined_smaller_ext_univ * epsilon.pow(&[2 as u64]);
 	    let S_equality_left_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &S_equality_left, r).unwrap();
+
+	    let r_prime = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"r_prime");
+	    let c_hat = &p_hat + &A_hat_z * r_prime + &S_hat * r_prime.pow(&[2 as u64]);
+	    let c_hat_eval_proof = SamaritanMLPCS::<E>::kzg10_eval_prove(&srs, &c_hat, r_inverse).unwrap();
 
 	  	//======================================================================================================================
 	  	/* Three deg check combined in a single instance */
@@ -433,7 +440,6 @@ impl<E: Pairing> GenericImprovedSumcheck<E> {
         	coeffs,
         	g_hat_commit,
         	h_hat_commit,
-        	rem_const,
         	small_poly_evals_at_z,
         	g_hat_h_hat_correctness_eval_proof,
         	beta_power_combined_smaller_mlp_commit,
@@ -442,10 +448,12 @@ impl<E: Pairing> GenericImprovedSumcheck<E> {
         	A_hat_z_commit,
         	S_hat_commit,
         	v_eta,
+        	v_eta_eval_proof,
         	p_hat_inv_eval,
         	A_hat_z_inv_eval,
         	S_hat_inv_eval,
         	S_equality_left_eval_proof,
+        	c_hat_eval_proof,
         	deg_check_proof,
         };
 
@@ -504,8 +512,7 @@ impl<E: Pairing> GenericImprovedSumcheck<E> {
 		util::append_field_element_vector_to_transcript::<E>(&mut transcript, b"small_poly_evals_at_z", &proof.small_poly_evals_at_z);
 
 		let G_tilde_eval_at_z = (proof.G_tilde_description)(proof.small_poly_evals_at_z.clone(), &proof.additional_field_elements);
-		// let eval_of_combined_g_hat_h_hat_at_z = G_tilde_eval_at_z - cur_eval_value * E::ScalarField::from(m as u64).inverse().unwrap();
-		let eval_of_combined_g_hat_h_hat_at_z = G_tilde_eval_at_z - proof.rem_const;
+		let eval_of_combined_g_hat_h_hat_at_z = G_tilde_eval_at_z - cur_eval_value * E::ScalarField::from(m as u64).inverse().unwrap();
 
 		let combined_g_hat_h_hat_commit = Commitment(E::G1::msm(&vec![proof.g_hat_commit.0, proof.h_hat_commit.0], &vec![z.pow(&[m as u64]) - E::ScalarField::one(), z]).unwrap().into_affine());
 
@@ -575,6 +582,8 @@ impl<E: Pairing> GenericImprovedSumcheck<E> {
 	    util::append_field_element_to_transcript::<E>(&mut transcript, b"A_hat_z_inv_eval", &proof.A_hat_z_inv_eval);
 	    util::append_field_element_to_transcript::<E>(&mut transcript, b"S_hat_inv_eval", &proof.S_hat_inv_eval);
 
+	    let v_eta_eval_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &proof.beta_power_combined_smaller_mlp_commit, r.pow(&[(1 << num_initial_rounds) as u64]), proof.v_eta, &proof.v_eta_eval_proof).unwrap();
+
 	    let B_hat_z_delta_eval = Self::evaluate_B_hat_z_at_point(&z, &(delta * r), kappa);
 	    let B_hat_z_inv_delta_eval = Self::evaluate_B_hat_z_at_point(&z, &(delta * r_inverse), kappa);
 
@@ -591,6 +600,12 @@ impl<E: Pairing> GenericImprovedSumcheck<E> {
 		let S_equality_left_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &S_equality_left_commit, r, S_equality_left_eval, &proof.S_equality_left_eval_proof).unwrap();
 	    // assert_eq!(S_equality_left_check, true);
 
+	    let r_prime = util::sample_random_challenge_from_transcript::<E>(&mut transcript, b"r_prime");
+	    let c_hat_eval = proof.p_hat_inv_eval + r_prime * proof.A_hat_z_inv_eval + r_prime.pow(&[2 as u64]) * proof.S_hat_inv_eval;
+	    let c_hat_commit = Commitment(E::G1::msm(&vec![proof.beta_power_combined_smaller_mlp_commit.0, proof.A_hat_z_commit.0, proof.S_hat_commit.0], 
+	     													&vec![E::ScalarField::one(), r_prime, r_prime.pow(&[2 as u64])]).unwrap().into_affine());
+	    let c_hat_eval_check = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &c_hat_commit, r_inverse, c_hat_eval, &proof.c_hat_eval_proof).unwrap();
+
 	    //======================================================================================================================
 	    /* degree check */
 
@@ -599,7 +614,7 @@ impl<E: Pairing> GenericImprovedSumcheck<E> {
 
         end_timer!(verifier_time);
 
-		Ok(g_hat_h_hat_check && combined_mlp_check && S_equality_left_check && deg_check_verify)
+		Ok(v_eta_eval_check && g_hat_h_hat_check && combined_mlp_check && S_equality_left_check && c_hat_eval_check && deg_check_verify)
 
 	}
 }
@@ -645,7 +660,7 @@ mod tests {
     #[test]
     fn functionality_test() {
         let mut rng = &mut test_rng();
-        let log_number_of_gates = 16;
+        let log_number_of_gates = 18;
         let num_of_gates = 1 << log_number_of_gates;
 
         let mlp_a = DenseMultilinearExtension::rand(log_number_of_gates, rng);
