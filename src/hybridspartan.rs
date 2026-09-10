@@ -581,21 +581,30 @@ mod tests {
     use ark_poly_commit::kzg10::*;
     use ark_poly_commit::*;
     use ark_ec::pairing::Pairing;
-    // use ark_bls12_381::Bls12_381;
-    // use ark_bls12_381::Fr;
-    use ark_bn254::Bn254;
-    use ark_bn254::Fr;
     use ark_std::test_rng;
     use ark_std::{rand::Rng, vec::Vec};
     use ark_std::{start_timer, end_timer, Zero, One};
+
+    #[cfg(feature = "bls12_381")]
+    use ark_bls12_381::{Bls12_381, Fr};
+
+    #[cfg(feature = "bn254")]
+    use ark_bn254::{Bn254, Fr};
     
     use crate::samaritan_mlpcs::*;
     use crate::generic_improved_sumcheck::*;
     use crate::hybridspartan::*;
 
-    // type GenericImprovedSumcheck_Bls12_381 = GenericImprovedSumcheck<Bls12_381>;
-    // type HybridSpartan_Bls12_381 = HybridSpartan<Bls12_381>;
+    #[cfg(feature = "bls12_381")]
+    type GenericImprovedSumcheck_Bls12_381 = GenericImprovedSumcheck<Bls12_381>;
+
+    #[cfg(feature = "bls12_381")]
+    type HybridSpartan_Bls12_381 = HybridSpartan<Bls12_381>;
+
+    #[cfg(feature = "bn254")]
     type GenericImprovedSumcheck_Bn254 = GenericImprovedSumcheck<Bn254>;
+
+    #[cfg(feature = "bn254")]
     type HybridSpartan_Bn254 = HybridSpartan<Bn254>;
 
     #[test]
@@ -635,39 +644,44 @@ mod tests {
 
     	//====================================================
 
-    	// let myckt: HybridSpartanCircuit::<Bls12_381> = HybridSpartan_Bls12_381::generate_circuit_for_inner_product(&A, &B, k, n);
+    	#[cfg(feature = "bls12_381")]
+    	{
+	    	let myckt: HybridSpartanCircuit::<Bls12_381> = HybridSpartan_Bls12_381::generate_circuit_for_inner_product(&A, &B, k, n);
 
-    	// let (srs, 
-		// ROW_tilde, COL_tilde, VAL_A_tilde, VAL_B_tilde, VAL_C_tilde, id_tilde,
-		// ROW_tilde_commit, COL_tilde_commit, VAL_A_tilde_commit, VAL_B_tilde_commit, VAL_C_tilde_commit, id_tilde_commit) = HybridSpartan_Bls12_381::preprocessing(&myckt, &mut rng).unwrap();
+	    	let (srs, 
+			ROW_tilde, COL_tilde, VAL_A_tilde, VAL_B_tilde, VAL_C_tilde, id_tilde,
+			ROW_tilde_commit, COL_tilde_commit, VAL_A_tilde_commit, VAL_B_tilde_commit, VAL_C_tilde_commit, id_tilde_commit) = HybridSpartan_Bls12_381::preprocessing(&myckt, &mut rng).unwrap();
 
-    	// let hybridspartan_proof = HybridSpartan_Bls12_381::prove(&myckt, &srs, &z, 
-    	// 													&ROW_tilde, &COL_tilde, &VAL_A_tilde, &VAL_B_tilde, &VAL_C_tilde, &id_tilde,
-    	// 													&ROW_tilde_commit, &COL_tilde_commit, &VAL_A_tilde_commit, &VAL_B_tilde_commit, &VAL_C_tilde_commit, &id_tilde_commit).unwrap();
+	    	let hybridspartan_proof = HybridSpartan_Bls12_381::prove(&myckt, &srs, &z, 
+	    														&ROW_tilde, &COL_tilde, &VAL_A_tilde, &VAL_B_tilde, &VAL_C_tilde, &id_tilde,
+	    														&ROW_tilde_commit, &COL_tilde_commit, &VAL_A_tilde_commit, &VAL_B_tilde_commit, &VAL_C_tilde_commit, &id_tilde_commit).unwrap();
 
-        // let valid = HybridSpartan_Bls12_381::verify(&hybridspartan_proof, &myckt, &srs,
-        // 												&ROW_tilde, &COL_tilde, &VAL_A_tilde, &VAL_B_tilde, &VAL_C_tilde, &id_tilde,
-        // 												&ROW_tilde_commit, &COL_tilde_commit, &VAL_A_tilde_commit, &VAL_B_tilde_commit, &VAL_C_tilde_commit, &id_tilde_commit).unwrap();
+	        let valid = HybridSpartan_Bls12_381::verify(&hybridspartan_proof, &myckt, &srs,
+	        												&ROW_tilde, &COL_tilde, &VAL_A_tilde, &VAL_B_tilde, &VAL_C_tilde, &id_tilde,
+	        												&ROW_tilde_commit, &COL_tilde_commit, &VAL_A_tilde_commit, &VAL_B_tilde_commit, &VAL_C_tilde_commit, &id_tilde_commit).unwrap();
 
-        // assert_eq!(valid, true);
+	        assert_eq!(valid, true);
+	    }
 
         //=====================================================
 
+        #[cfg(feature = "bn254")]
+        {
+	        let myckt: HybridSpartanCircuit::<Bn254> = HybridSpartan_Bn254::generate_circuit_for_inner_product(&A, &B, k, n);
 
-        let myckt: HybridSpartanCircuit::<Bn254> = HybridSpartan_Bn254::generate_circuit_for_inner_product(&A, &B, k, n);
+	    	let (srs, 
+			ROW_tilde, COL_tilde, VAL_A_tilde, VAL_B_tilde, VAL_C_tilde, id_tilde,
+			ROW_tilde_commit, COL_tilde_commit, VAL_A_tilde_commit, VAL_B_tilde_commit, VAL_C_tilde_commit, id_tilde_commit) = HybridSpartan_Bn254::preprocessing(&myckt, &mut rng).unwrap();
 
-    	let (srs, 
-		ROW_tilde, COL_tilde, VAL_A_tilde, VAL_B_tilde, VAL_C_tilde, id_tilde,
-		ROW_tilde_commit, COL_tilde_commit, VAL_A_tilde_commit, VAL_B_tilde_commit, VAL_C_tilde_commit, id_tilde_commit) = HybridSpartan_Bn254::preprocessing(&myckt, &mut rng).unwrap();
+	    	let hybridspartan_proof = HybridSpartan_Bn254::prove(&myckt, &srs, &z, 
+	    														&ROW_tilde, &COL_tilde, &VAL_A_tilde, &VAL_B_tilde, &VAL_C_tilde, &id_tilde,
+	    														&ROW_tilde_commit, &COL_tilde_commit, &VAL_A_tilde_commit, &VAL_B_tilde_commit, &VAL_C_tilde_commit, &id_tilde_commit).unwrap();
 
-    	let hybridspartan_proof = HybridSpartan_Bn254::prove(&myckt, &srs, &z, 
-    														&ROW_tilde, &COL_tilde, &VAL_A_tilde, &VAL_B_tilde, &VAL_C_tilde, &id_tilde,
-    														&ROW_tilde_commit, &COL_tilde_commit, &VAL_A_tilde_commit, &VAL_B_tilde_commit, &VAL_C_tilde_commit, &id_tilde_commit).unwrap();
+	        let valid = HybridSpartan_Bn254::verify(&hybridspartan_proof, &myckt, &srs,
+	        												&ROW_tilde, &COL_tilde, &VAL_A_tilde, &VAL_B_tilde, &VAL_C_tilde, &id_tilde,
+	        												&ROW_tilde_commit, &COL_tilde_commit, &VAL_A_tilde_commit, &VAL_B_tilde_commit, &VAL_C_tilde_commit, &id_tilde_commit).unwrap();
 
-        let valid = HybridSpartan_Bn254::verify(&hybridspartan_proof, &myckt, &srs,
-        												&ROW_tilde, &COL_tilde, &VAL_A_tilde, &VAL_B_tilde, &VAL_C_tilde, &id_tilde,
-        												&ROW_tilde_commit, &COL_tilde_commit, &VAL_A_tilde_commit, &VAL_B_tilde_commit, &VAL_C_tilde_commit, &id_tilde_commit).unwrap();
-
-        assert_eq!(valid, true);
+	        assert_eq!(valid, true);
+	    }
     }
 }

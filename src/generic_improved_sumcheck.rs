@@ -626,18 +626,23 @@ mod tests {
     use ark_poly_commit::kzg10::*;
     use ark_poly_commit::*;
     use ark_ec::pairing::Pairing;
-    use ark_bls12_381::Bls12_381;
-    use ark_bls12_381::Fr;
-    // use ark_bn254::Bn254;
-    // use ark_bn254::Fr;
     use ark_std::test_rng;
     use ark_std::{start_timer, end_timer, Zero, One};
+
+    #[cfg(feature = "bls12_381")]
+    use ark_bls12_381::{Bls12_381, Fr};
+
+    #[cfg(feature = "bn254")]
+    use ark_bn254::{Bn254, Fr};
     
     use crate::samaritan_mlpcs::*;
     use crate::generic_improved_sumcheck::*;
 
+    #[cfg(feature = "bls12_381")]
     type GenericImprovedSumcheck_Bls12_381 = GenericImprovedSumcheck<Bls12_381>;
-    // type GenericImprovedSumcheck_Bn254 = GenericImprovedSumcheck<Bn254>;
+
+    #[cfg(feature = "bn254")]
+    type GenericImprovedSumcheck_Bn254 = GenericImprovedSumcheck<Bn254>;
 
     fn myfunc(set_of_values: Vec<Fr>, additional_field_elements: &Vec<Fr>) -> Fr {
     	set_of_values[0] * set_of_values[1] - set_of_values[2]
@@ -674,60 +679,65 @@ mod tests {
         }
         let mlp_ab = DenseMultilinearExtension::from_evaluations_vec(log_number_of_gates, ab_vec);
 
-        let srs = SamaritanMLPCS::<Bls12_381>::setup(log_number_of_gates, rng).unwrap();
-        let mlp_a_commit = SamaritanMLPCS::<Bls12_381>::commit_G1(&srs, &mlp_a).unwrap();
-        let mlp_b_commit = SamaritanMLPCS::<Bls12_381>::commit_G1(&srs, &mlp_b).unwrap();
-        let mlp_ab_commit = SamaritanMLPCS::<Bls12_381>::commit_G1(&srs, &mlp_ab).unwrap();
+        #[cfg(feature = "bls12_381")]
+        {
+	        let srs = SamaritanMLPCS::<Bls12_381>::setup(log_number_of_gates, rng).unwrap();
+	        let mlp_a_commit = SamaritanMLPCS::<Bls12_381>::commit_G1(&srs, &mlp_a).unwrap();
+	        let mlp_b_commit = SamaritanMLPCS::<Bls12_381>::commit_G1(&srs, &mlp_b).unwrap();
+	        let mlp_ab_commit = SamaritanMLPCS::<Bls12_381>::commit_G1(&srs, &mlp_ab).unwrap();
 
-        let commit_list = vec![Some(mlp_a_commit), Some(mlp_b_commit), Some(mlp_ab_commit)];
-        let sumcheck_relation: SumcheckRelation<Bls12_381> = SumcheckRelation {
-        							log_number_of_vars: log_number_of_gates,
-        							max_degree: 2,
-        							mlp_set: vec![mlp_a, mlp_b, mlp_ab],
-        							commit_list: commit_list,
-        							// mark_if_eval_reqd_in_linear_combination: vec![false, true, false],
-        							eq_tilde_eval_infos: Vec::new(),
-        							rhs: Fr::zero(),
-        							additional_field_elements: Vec::new(),
-        							G_tilde_description: myfunc,
-        							G_tilde_description_poly: myfunc_poly,
-        							G_bar_linear_combine: myfunc_linear_combined_poly,
-        							// G_tilde_combined_commit: myfunc_combined_commit,
-        						};
+	        let commit_list = vec![Some(mlp_a_commit), Some(mlp_b_commit), Some(mlp_ab_commit)];
+	        let sumcheck_relation: SumcheckRelation<Bls12_381> = SumcheckRelation {
+	        							log_number_of_vars: log_number_of_gates,
+	        							max_degree: 2,
+	        							mlp_set: vec![mlp_a, mlp_b, mlp_ab],
+	        							commit_list: commit_list,
+	        							// mark_if_eval_reqd_in_linear_combination: vec![false, true, false],
+	        							eq_tilde_eval_infos: Vec::new(),
+	        							rhs: Fr::zero(),
+	        							additional_field_elements: Vec::new(),
+	        							G_tilde_description: myfunc,
+	        							G_tilde_description_poly: myfunc_poly,
+	        							G_bar_linear_combine: myfunc_linear_combined_poly,
+	        							// G_tilde_combined_commit: myfunc_combined_commit,
+	        						};
 
-        let generic_improved_sumcheck_proof = GenericImprovedSumcheck_Bls12_381::prove(&srs, &sumcheck_relation).unwrap();
+	        let generic_improved_sumcheck_proof = GenericImprovedSumcheck_Bls12_381::prove(&srs, &sumcheck_relation).unwrap();
 
-        let valid = GenericImprovedSumcheck_Bls12_381::verify(&generic_improved_sumcheck_proof, sumcheck_relation.commit_list, &srs).unwrap();
+	        let valid = GenericImprovedSumcheck_Bls12_381::verify(&generic_improved_sumcheck_proof, sumcheck_relation.commit_list, &srs).unwrap();
 
-        assert_eq!(valid, true);
+	        assert_eq!(valid, true);
+	    }
 
 
+	    #[cfg(feature = "bn254")]
+	    {
+	        let srs = SamaritanMLPCS::<Bn254>::setup(log_number_of_gates, rng).unwrap();
+	        let mlp_a_commit = SamaritanMLPCS::<Bn254>::commit_G1(&srs, &mlp_a).unwrap();
+	        let mlp_b_commit = SamaritanMLPCS::<Bn254>::commit_G1(&srs, &mlp_b).unwrap();
+	        let mlp_ab_commit = SamaritanMLPCS::<Bn254>::commit_G1(&srs, &mlp_ab).unwrap();
 
-        // let srs = SamaritanMLPCS::<Bn254>::setup(log_number_of_gates, rng).unwrap();
-        // let mlp_a_commit = SamaritanMLPCS::<Bn254>::commit_G1(&srs, &mlp_a).unwrap();
-        // let mlp_b_commit = SamaritanMLPCS::<Bn254>::commit_G1(&srs, &mlp_b).unwrap();
-        // let mlp_ab_commit = SamaritanMLPCS::<Bn254>::commit_G1(&srs, &mlp_ab).unwrap();
+	        let commit_list = vec![Some(mlp_a_commit), Some(mlp_b_commit), Some(mlp_ab_commit)];
+	        let sumcheck_relation: SumcheckRelation<Bn254> = SumcheckRelation {
+	        							log_number_of_vars: log_number_of_gates,
+	        							max_degree: 2,
+	        							mlp_set: vec![mlp_a, mlp_b, mlp_ab],
+	        							commit_list: commit_list,
+	        							eq_tilde_eval_infos: Vec::new(),
+	        							rhs: Fr::zero(),
+	        							additional_field_elements: Vec::new(),
+	        							G_tilde_description: myfunc,
+	        							G_tilde_description_poly: myfunc_poly,
+	        							G_bar_linear_combine: myfunc_linear_combined_poly,
+	        							// G_tilde_combined_commit: myfunc_combined_commit,
+	        						};
 
-        // let commit_list = vec![Some(mlp_a_commit), Some(mlp_b_commit), Some(mlp_ab_commit)];
-        // let sumcheck_relation: SumcheckRelation<Bn254> = SumcheckRelation {
-        // 							log_number_of_vars: log_number_of_gates,
-        // 							max_degree: 2,
-        // 							mlp_set: vec![mlp_a, mlp_b, mlp_ab],
-        // 							commit_list: commit_list,
-        // 							eq_tilde_eval_infos: Vec::new(),
-        // 							rhs: Fr::zero(),
-        // 							additional_field_elements: Vec::new(),
-        // 							G_tilde_description: myfunc,
-        // 							G_tilde_description_poly: myfunc_poly,
-        // 							G_bar_linear_combine: myfunc_linear_combined_poly,
-        // 							// G_tilde_combined_commit: myfunc_combined_commit,
-        // 						};
+	        let generic_improved_sumcheck_proof = GenericImprovedSumcheck_Bn254::prove(&srs, &sumcheck_relation).unwrap();
 
-        // let generic_improved_sumcheck_proof = GenericImprovedSumcheck_Bn254::prove(&srs, &sumcheck_relation).unwrap();
+	        let valid = GenericImprovedSumcheck_Bn254::verify(&generic_improved_sumcheck_proof, sumcheck_relation.commit_list, &srs).unwrap();
 
-        // let valid = GenericImprovedSumcheck_Bn254::verify(&generic_improved_sumcheck_proof, sumcheck_relation.commit_list, &srs).unwrap();
-
-        // assert_eq!(valid, true);
+	        assert_eq!(valid, true);
+	    }
       }
 }
 

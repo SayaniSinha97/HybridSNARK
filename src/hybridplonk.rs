@@ -1236,20 +1236,24 @@ mod tests {
     use std::time::Instant;
     use ark_poly_commit::*;
     use ark_ec::pairing::Pairing;
-    use ark_bls12_381::Bls12_381;
-    use ark_bls12_381::Fr;
-    // use ark_bn254::Bn254;
-    // use ark_bn254::Fr;
     use ark_std::test_rng;
     use ark_std::{rand::Rng, vec::Vec};
 	use ark_std::rand::seq::SliceRandom;
+
+	#[cfg(feature = "bls12_381")]
+    use ark_bls12_381::{Bls12_381, Fr};
+
+    #[cfg(feature = "bn254")]
+    use ark_bn254::{Bn254, Fr};
+
     use crate::samaritan_mlpcs::*;
     use crate::hybridplonk::*;
 
-    type SamaritanMLPCS_Bls12_381 = SamaritanMLPCS<Bls12_381>;
+    #[cfg(feature = "bls12_381")]
     type HybridPlonk_Bls12_381 = HybridPlonk<Bls12_381>;
-    // type SamaritanMLPCS_Bn254 = SamaritanMLPCS<Bn254>;
-    // type HybridPlonk_Bn254 = HybridPlonk<Bn254>;
+
+    #[cfg(feature = "bn254")]
+    type HybridPlonk_Bn254 = HybridPlonk<Bn254>;
 
     #[test]
     fn functionality_test(){
@@ -1263,59 +1267,120 @@ mod tests {
     	let n: usize = 1 << logn;
     	let A: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
     	let B: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
-    	let myckt: HybridPlonkCircuit::<Bls12_381> = HybridPlonk_Bls12_381::generate_circuit_for_inner_product(&A, &B, n);
 
-    	let mut w1_vec: Vec<_> = Vec::new();
-    	let mut w2_vec: Vec<_> = Vec::new();
-    	let mut w3_vec: Vec<_> = Vec::new();
+    	#[cfg(feature = "bls12_381")]
+    	{
+	    	let myckt: HybridPlonkCircuit::<Bls12_381> = HybridPlonk_Bls12_381::generate_circuit_for_inner_product(&A, &B, n);
 
-    	for i in 0..n {
-    		w1_vec.push(Fr::from(A[i] as u64));
-    		w2_vec.push(Fr::from(B[i] as u64));
-    		w3_vec.push(Fr::from((A[i] * B[i]) as u64));
-    	}
+	    	let mut w1_vec: Vec<_> = Vec::new();
+	    	let mut w2_vec: Vec<_> = Vec::new();
+	    	let mut w3_vec: Vec<_> = Vec::new();
 
-    	for i in 0..n {
-    		if i == 0 {
-    			w1_vec.push(w1_vec[0] * w2_vec[0]);
-    		}
-    		else{
-    			w1_vec.push(w1_vec[n + i - 1] + w2_vec[n + i -1]);
-    		}
-    		if i == n-1 {
-    			w2_vec.push(Fr::zero());
-    		}
-    		else{
-    			w2_vec.push(w1_vec[i + 1] * w2_vec[i + 1]);
-    		}
-    		w3_vec.push(w1_vec[n + i] + w2_vec[n + i]);
-    	}
+	    	for i in 0..n {
+	    		w1_vec.push(Fr::from(A[i] as u64));
+	    		w2_vec.push(Fr::from(B[i] as u64));
+	    		w3_vec.push(Fr::from((A[i] * B[i]) as u64));
+	    	}
+
+	    	for i in 0..n {
+	    		if i == 0 {
+	    			w1_vec.push(w1_vec[0] * w2_vec[0]);
+	    		}
+	    		else{
+	    			w1_vec.push(w1_vec[n + i - 1] + w2_vec[n + i -1]);
+	    		}
+	    		if i == n-1 {
+	    			w2_vec.push(Fr::zero());
+	    		}
+	    		else{
+	    			w2_vec.push(w1_vec[i + 1] * w2_vec[i + 1]);
+	    		}
+	    		w3_vec.push(w1_vec[n + i] + w2_vec[n + i]);
+	    	}
 
 
 
-    	let w1 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w1_vec);
-    	let w2 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w2_vec);
-    	let w3 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w3_vec);
+	    	let w1 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w1_vec);
+	    	let w2 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w2_vec);
+	    	let w3 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w3_vec);
 
-    	let (srs, 
-    		qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
-        	sigma1_comm, sigma2_comm, sigma3_comm, 
-        	id1_comm, id2_comm, id3_comm) = HybridPlonk_Bls12_381::setup(&myckt, &mut rng).unwrap();
+	    	let (srs, 
+	    		qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+	        	sigma1_comm, sigma2_comm, sigma3_comm, 
+	        	id1_comm, id2_comm, id3_comm) = HybridPlonk_Bls12_381::setup(&myckt, &mut rng).unwrap();
 
-    	// let prover_time = start_timer!(||"prover time");
-    	let hybridplonk_proof = HybridPlonk_Bls12_381::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
-    	// end_timer!(prover_time);
+	    	// let prover_time = start_timer!(||"prover time");
+	    	let hybridplonk_proof = HybridPlonk_Bls12_381::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
+	    	// end_timer!(prover_time);
 
-    	println!("number of initial rounds: {}", hybridplonk_proof.number_of_initial_rounds);
+	    	println!("number of initial rounds: {}", hybridplonk_proof.number_of_initial_rounds);
 
-    	// let verifier_time = start_timer!(||"verifier time");
-        let valid = HybridPlonk_Bls12_381::verify(&hybridplonk_proof, &myckt, &srs, 
-        	qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
-        	sigma1_comm, sigma2_comm, sigma3_comm, 
-        	id1_comm, id2_comm, id3_comm).unwrap();
-        // end_timer!(verifier_time);
+	    	// let verifier_time = start_timer!(||"verifier time");
+	        let valid = HybridPlonk_Bls12_381::verify(&hybridplonk_proof, &myckt, &srs, 
+	        	qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+	        	sigma1_comm, sigma2_comm, sigma3_comm, 
+	        	id1_comm, id2_comm, id3_comm).unwrap();
+	        // end_timer!(verifier_time);
 
-        assert_eq!(valid, true);
+	        assert_eq!(valid, true);
+	    }
+
+	    #[cfg(feature = "bn254")]
+	    {
+	    	let myckt: HybridPlonkCircuit::<Bn254> = HybridPlonk_Bn254::generate_circuit_for_inner_product(&A, &B, n);
+
+	    	let mut w1_vec: Vec<_> = Vec::new();
+	    	let mut w2_vec: Vec<_> = Vec::new();
+	    	let mut w3_vec: Vec<_> = Vec::new();
+
+	    	for i in 0..n {
+	    		w1_vec.push(Fr::from(A[i] as u64));
+	    		w2_vec.push(Fr::from(B[i] as u64));
+	    		w3_vec.push(Fr::from((A[i] * B[i]) as u64));
+	    	}
+
+	    	for i in 0..n {
+	    		if i == 0 {
+	    			w1_vec.push(w1_vec[0] * w2_vec[0]);
+	    		}
+	    		else{
+	    			w1_vec.push(w1_vec[n + i - 1] + w2_vec[n + i -1]);
+	    		}
+	    		if i == n-1 {
+	    			w2_vec.push(Fr::zero());
+	    		}
+	    		else{
+	    			w2_vec.push(w1_vec[i + 1] * w2_vec[i + 1]);
+	    		}
+	    		w3_vec.push(w1_vec[n + i] + w2_vec[n + i]);
+	    	}
+
+
+
+	    	let w1 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w1_vec);
+	    	let w2 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w2_vec);
+	    	let w3 = DenseMultilinearExtension::from_evaluations_vec(myckt.log_number_of_gates, w3_vec);
+
+	    	let (srs, 
+	    		qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+	        	sigma1_comm, sigma2_comm, sigma3_comm, 
+	        	id1_comm, id2_comm, id3_comm) = HybridPlonk_Bn254::setup(&myckt, &mut rng).unwrap();
+
+	    	// let prover_time = start_timer!(||"prover time");
+	    	let hybridplonk_proof = HybridPlonk_Bn254::prove(&myckt, &w1, &w2, &w3, &srs).unwrap();
+	    	// end_timer!(prover_time);
+
+	    	println!("number of initial rounds: {}", hybridplonk_proof.number_of_initial_rounds);
+
+	    	// let verifier_time = start_timer!(||"verifier time");
+	        let valid = HybridPlonk_Bn254::verify(&hybridplonk_proof, &myckt, &srs, 
+	        	qM_comm, qL_comm, qR_comm, qO_comm, qC_comm, 
+	        	sigma1_comm, sigma2_comm, sigma3_comm, 
+	        	id1_comm, id2_comm, id3_comm).unwrap();
+	        // end_timer!(verifier_time);
+
+	        assert_eq!(valid, true);
+	    }
 
     }
 }

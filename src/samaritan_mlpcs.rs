@@ -518,14 +518,19 @@ mod tests {
     use ark_poly_commit::kzg10::*;
     use ark_poly_commit::*;
     use ark_ec::pairing::Pairing;
-    // use ark_bls12_381::Bls12_381;
-    // use ark_bls12_381::Fr;
-    use ark_bn254::Bn254;
-    use ark_bn254::Fr;
     use ark_std::test_rng;
     use crate::samaritan_mlpcs::*;
 
-    // type SamaritanMLPCS_Bls12_381 = SamaritanMLPCS<Bls12_381>;
+    #[cfg(feature = "bls12_381")]
+    use ark_bls12_381::{Bls12_381, Fr};
+
+    #[cfg(feature = "bn254")]
+    use ark_bn254::{Bn254, Fr};
+
+    #[cfg(feature = "bls12_381")]
+    type SamaritanMLPCS_Bls12_381 = SamaritanMLPCS<Bls12_381>;
+
+    #[cfg(feature = "bn254")]
     type SamaritanMLPCS_Bn254 = SamaritanMLPCS<Bn254>;
 
     #[test]
@@ -548,59 +553,65 @@ mod tests {
 
         //===============================================
 
-        // // the setup of SamaritanMLPCS
-        // let srs = SamaritanMLPCS_Bls12_381::setup(num_vars, &mut rng).unwrap();
+        #[cfg(feature = "bls12_381")]
+        {
+            // the setup of SamaritanMLPCS
+            let srs = SamaritanMLPCS_Bls12_381::setup(num_vars, &mut rng).unwrap();
 
-        // // the commit of SamaritanMLPCS: commit to multilinear polynomial mlp, viewed as univariate polynomial f_hat, f_hat_commit is output by it.
-        // let comm = SamaritanMLPCS_Bls12_381::commit_G1(&srs, &mlp).unwrap();
+            // the commit of SamaritanMLPCS: commit to multilinear polynomial mlp, viewed as univariate polynomial f_hat, f_hat_commit is output by it.
+            let comm = SamaritanMLPCS_Bls12_381::commit_G1(&srs, &mlp).unwrap();
 
-        // // sampling a random point (basically mu number of field elements for mu-variate multilinear polynomial) and evaluate the polynomial at that point
-        // let point: Vec<_> = (0..num_vars).map(|_| Fr::rand(rng)).collect();
+            // sampling a random point (basically mu number of field elements for mu-variate multilinear polynomial) and evaluate the polynomial at that point
+            let point: Vec<_> = (0..num_vars).map(|_| Fr::rand(rng)).collect();
 
-        // let eval = mlp.evaluate(&point);
+            let eval = mlp.evaluate(&point);
 
-        // // println!("At point: {:?}, eval is: {:?}", point, eval);
-                
-        // // run the interactive prover of SamaritanMLPCS to do a proof of evaluation to show mlp(point) = eval 
-        // let (eval_proof, deg_check) = SamaritanMLPCS_Bls12_381::prove(&srs, &mlp, &point, eval, &mut rng).expect("something went wrong in proving");
+            // println!("At point: {:?}, eval is: {:?}", point, eval);
+                    
+            // run the interactive prover of SamaritanMLPCS to do a proof of evaluation to show mlp(point) = eval 
+            let (eval_proof, deg_check) = SamaritanMLPCS_Bls12_381::prove(&srs, &mlp, &point, eval, &mut rng).expect("something went wrong in proving");
 
-        // // run the interactive verifier of SamaritanMLPCS to verify the proof of mlp(point) = eval
-        // let valid = SamaritanMLPCS_Bls12_381::verify(&srs, &comm, &point, eval, &eval_proof).unwrap();
-        
-        // assert_eq!(valid, true);
+            // run the interactive verifier of SamaritanMLPCS to verify the proof of mlp(point) = eval
+            let valid = SamaritanMLPCS_Bls12_381::verify(&srs, &comm, &point, eval, &eval_proof).unwrap();
+            
+            assert_eq!(valid, true);
 
-        // let deg_check_proof = DegreeCheck::<Bls12_381>::prove(&srs, &deg_check).unwrap();
-        // let valid_deg_check = DegreeCheck::<Bls12_381>::verify(&srs, &deg_check_proof).unwrap();
+            let deg_check_proof = DegreeCheck::<Bls12_381>::prove(&srs, &deg_check).unwrap();
+            let valid_deg_check = DegreeCheck::<Bls12_381>::verify(&srs, &deg_check_proof).unwrap();
 
-        // assert_eq!(valid_deg_check, true);
+            assert_eq!(valid_deg_check, true);
+        }
 
         //==================================================
 
-        // the setup of SamaritanMLPCS
-        let srs = SamaritanMLPCS_Bn254::setup(num_vars, &mut rng).unwrap();
+        #[cfg(feature = "bn254")]
+        {
+            // the setup of SamaritanMLPCS
+            let srs = SamaritanMLPCS_Bn254::setup(num_vars, &mut rng).unwrap();
 
-        // the commit of SamaritanMLPCS: commit to multilinear polynomial mlp, viewed as univariate polynomial f_hat, f_hat_commit is output by it.
-        let comm = SamaritanMLPCS_Bn254::commit_G1(&srs, &mlp).unwrap();
+            // the commit of SamaritanMLPCS: commit to multilinear polynomial mlp, viewed as univariate polynomial f_hat, f_hat_commit is output by it.
+            let comm = SamaritanMLPCS_Bn254::commit_G1(&srs, &mlp).unwrap();
 
-        // sampling a random point (basically mu number of field elements for mu-variate multilinear polynomial) and evaluate the polynomial at that point
-        let point: Vec<_> = (0..num_vars).map(|_| Fr::rand(rng)).collect();
+            // sampling a random point (basically mu number of field elements for mu-variate multilinear polynomial) and evaluate the polynomial at that point
+            let point: Vec<_> = (0..num_vars).map(|_| Fr::rand(rng)).collect();
 
-        let eval = mlp.evaluate(&point);
+            let eval = mlp.evaluate(&point);
 
-        // println!("At point: {:?}, eval is: {:?}", point, eval);
-                
-        // run the interactive prover of SamaritanMLPCS to do a proof of evaluation to show mlp(point) = eval 
-        let (eval_proof, deg_check) = SamaritanMLPCS_Bn254::prove(&srs, &mlp, &point, eval, &mut rng).expect("something went wrong in proving");
+            // println!("At point: {:?}, eval is: {:?}", point, eval);
+                    
+            // run the interactive prover of SamaritanMLPCS to do a proof of evaluation to show mlp(point) = eval 
+            let (eval_proof, deg_check) = SamaritanMLPCS_Bn254::prove(&srs, &mlp, &point, eval, &mut rng).expect("something went wrong in proving");
 
-        // run the interactive verifier of SamaritanMLPCS to verify the proof of mlp(point) = eval
-        let valid = SamaritanMLPCS_Bn254::verify(&srs, &comm, &point, eval, &eval_proof).unwrap();
-        
-        assert_eq!(valid, true);
+            // run the interactive verifier of SamaritanMLPCS to verify the proof of mlp(point) = eval
+            let valid = SamaritanMLPCS_Bn254::verify(&srs, &comm, &point, eval, &eval_proof).unwrap();
+            
+            assert_eq!(valid, true);
 
-        let deg_check_proof = DegreeCheck::<Bn254>::prove(&srs, &deg_check).unwrap();
-        let valid_deg_check = DegreeCheck::<Bn254>::verify(&srs, &deg_check_proof).unwrap();
+            let deg_check_proof = DegreeCheck::<Bn254>::prove(&srs, &deg_check).unwrap();
+            let valid_deg_check = DegreeCheck::<Bn254>::verify(&srs, &deg_check_proof).unwrap();
 
-        assert_eq!(valid_deg_check, true);
+            assert_eq!(valid_deg_check, true);
+        }
     }
 
 }
