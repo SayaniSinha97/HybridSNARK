@@ -602,7 +602,11 @@ mod tests {
     fn functionality_test(){
     	let mut rng = &mut test_rng();
         // n is the dimension of each of the two vectors (A and B) participating in inner product.
-    	let n: usize = 1 << 16;
+
+        let logn: usize = std::env::var("V")
+		    .map(|s| s.parse().expect("V must be a positive integer"))
+		    .unwrap_or(16);
+    	let n: usize = 1 << logn;
     	let A: Vec<Fr> = (0..n).map(|_| Fr::from(rng.gen_range(1..5))).collect();
     	let B: Vec<Fr> = (0..n).map(|_| Fr::from(rng.gen_range(1..5))).collect();
 

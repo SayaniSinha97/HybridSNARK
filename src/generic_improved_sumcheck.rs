@@ -221,7 +221,7 @@ impl<E: Pairing> GenericImprovedSumcheck<E> {
 
     pub fn prove(srs: &SamaritanMLPCS_SRS<E>, sumcheck_relation: &SumcheckRelation<E>) -> Result<GenericImprovedSumcheckProof<E>, Error> {
 
-    	let prover_time = start_timer!(|| format!("GenericImprovedSumcheck::prove with log_number_of_vars {}", sumcheck_relation.log_number_of_vars));
+    	// let prover_time = start_timer!(|| format!("GenericImprovedSumcheck::prove with log_number_of_vars {}", sumcheck_relation.log_number_of_vars));
 		let mut transcript = Transcript::new(b"GenericImprovedSumcheck Transcript");
 
     	let log_number_of_gates = sumcheck_relation.log_number_of_vars;
@@ -457,14 +457,14 @@ impl<E: Pairing> GenericImprovedSumcheck<E> {
         	deg_check_proof,
         };
 
-		end_timer!(prover_time);
+		// end_timer!(prover_time);
 
 		Ok(proof)
 	}
 
 	// pub fn verify(proof: &GenericImprovedSumcheckProof<E>, public_computable_commit_list: &Vec<Option<Commitment<E>>>, srs: &SamaritanMLPCS_SRS<E>) -> Result<bool, Error> {
 	pub fn verify(proof: &GenericImprovedSumcheckProof<E>, commit_list: Vec<Option<Commitment<E>>>, srs: &SamaritanMLPCS_SRS<E>) -> Result<bool, Error> {
-		let verifier_time = start_timer!(|| format!("GenericImprovedSumcheck::verify"));
+		// let verifier_time = start_timer!(|| format!("GenericImprovedSumcheck::verify"));
 
         let mut transcript = Transcript::new(b"GenericImprovedSumcheck Transcript");
         
@@ -612,7 +612,7 @@ impl<E: Pairing> GenericImprovedSumcheck<E> {
 	    let deg_check_verify = DegreeCheck::<E>::verify(&srs, &proof.deg_check_proof).unwrap();
         // assert_eq!(deg_check_verify, true);
 
-        end_timer!(verifier_time);
+        // end_timer!(verifier_time);
 
 		Ok(v_eta_eval_check && g_hat_h_hat_check && combined_mlp_check && S_equality_left_check && c_hat_eval_check && deg_check_verify)
 

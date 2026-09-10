@@ -340,7 +340,7 @@ impl<E: Pairing> SamaritanMLPCS<E>
         eval: E::ScalarField,
         rng: &mut dyn RngCore,
     ) -> Result<(SamaritanMLPCSEvalProof<E>, DegreeCheckPolynomials<E>), Error> {
-        let prover_time = start_timer!(|| format!("SamaritanMLPCS::prove with multilinear polynomial of maximum variables {}", multi_linear_poly.num_vars));
+        // let prover_time = start_timer!(|| format!("SamaritanMLPCS::prove with multilinear polynomial of maximum variables {}", multi_linear_poly.num_vars));
 
         let seed = [42u8; 32];
         let mut rng2 = StdRng::from_seed(seed);
@@ -454,7 +454,7 @@ impl<E: Pairing> SamaritanMLPCS<E>
             polys: vec![t_hat],
             degs: vec![n - 1],
         };
-        end_timer!(prover_time);
+        // end_timer!(prover_time);
 
         Ok((proof, deg_check))
     }
@@ -474,7 +474,7 @@ impl<E: Pairing> SamaritanMLPCS<E>
         let l: usize = 2usize.pow(nu as u32);
         let max_deg: usize = n;
 
-        let verifier_time = start_timer!(|| format!("SamaritanMLPCS::verify with multilinear polynomial"));
+        // let verifier_time = start_timer!(|| format!("SamaritanMLPCS::verify with multilinear polynomial"));
         
         let mut transcript = Transcript::new(b"SamaritanMLPCS Transcript");
 
@@ -506,7 +506,7 @@ impl<E: Pairing> SamaritanMLPCS<E>
         
         let passed = SamaritanMLPCS::<E>::kzg10_eval_proof_verify(&srs, &q_hat_commit, delta, E::ScalarField::zero(), &proof.q_eval_proof).unwrap();
 
-        end_timer!(verifier_time);
+        // end_timer!(verifier_time);
 
         Ok(passed == true)
     }

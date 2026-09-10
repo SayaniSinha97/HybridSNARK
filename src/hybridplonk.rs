@@ -1256,7 +1256,11 @@ mod tests {
     	let mut rng = &mut test_rng();
         // n is the dimension of each of the two vectors (A and B) participating in inner product. (2*n) is the number of gates in the circuit. 2^(n+1) is the size of
     	// evaluation vecs of each mlp. In short #vars = (n + 1).
-    	let n: usize = 1 << 17;
+
+    	let logn: usize = std::env::var("V")
+		    .map(|s| s.parse().expect("V must be a positive integer"))
+		    .unwrap_or(17);
+    	let n: usize = 1 << logn;
     	let A: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
     	let B: Vec<usize> = (0..n).map(|_| rng.gen_range(1..5)).collect();
     	let myckt: HybridPlonkCircuit::<Bls12_381> = HybridPlonk_Bls12_381::generate_circuit_for_inner_product(&A, &B, n);
