@@ -50,34 +50,41 @@ In updatable SRS settings, **HybridSpartan** and **HybridPlonk** achieve the sho
 
 ---
 
-## Quick Guide for Artifact Evaluation
+## Prerequisites
 
-For evaluators who are unfamiliar with Rust, the following sequence is sufficient to build and test the artifact on Linux/macOS:
+The artifact assumes a working installation of Rust and Cargo, as well as the standard system build dependencies required by Rust and its dependencies. The artifact has been tested with the Rust toolchain specified by the project configuration.
 
-```bash
-# 1. Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+Users are expected to have these prerequisites installed and available in their system PATH before proceeding.
 
-# 2. Verify installation
+Verify the Rust and Cargo installations using:
+```
 rustc --version
 cargo --version
+```
 
-# 3. Clone the repository
+---
+
+## Quick Guide for Artifact Evaluation
+
+For artifact evaluation, please follow the following sequence of commands:
+
+```bash
+# 1. Clone the repository
 git clone https://github.com/SayaniSinha97/HybridSNARK.git
 
-# 4. Enter the repository
+# 2. Enter the repository
 cd HybridSNARK
 
-# 5. Build the artifact
+# 3. Build the artifact
 cargo build --release
 
-# 6. To run all functional tests over BN254 curve:
+# 4. To run all functional tests over BN254 curve:
 RUSTFLAGS="-Awarnings" cargo test --release --lib --features bn254
 
-# 7. To run all functional tests over BLS12-381 curve:
+# 5. To run all functional tests over BLS12-381 curve:
 RUSTFLAGS="-Awarnings" cargo test --release --lib --features bls12_381
 
-# 8. Finally run the following script to find the prover and verifier times of
+# 6. Finally run the following script to find the prover and verifier times of
 # both the proposed SNARKs (HybridSpartan and HybridPlonk) over BLS12-381 and BN254 curves
 # for number_of_gates/number_of_constraints varying in the range {2^16, 2^18, 2^20, 2^22, 2^24},
 # considering single-threaded execution:
