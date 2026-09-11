@@ -84,12 +84,12 @@ RUSTFLAGS="-Awarnings" cargo test --release --lib --features bls12_381
 
 sh run_experiments.sh
 
-# Note that the published version of the paper reports prover times of
+# Note that the accepted version of the paper reports prover times of
 # HybridSpartan and HybridPlonk over BLS12-381 and BN254 curve in Table 4 and Table 5 respectively
 # for the number_of_gates/number_of_constraints varying in the range {2^18, 2^20, 2^22, 2^24, 2^26}.
 # The experiments were performed on an Intel(R) Xeon(R) Silver 4214R CPU with 2.40GHz of clock frequency,
 # 48 cores, and 128 GB RAM, running Ubuntu 22.04. For fair comparison with state-of-the-art SNARKs,
-# the published version reports timings for single-threaded execution.
+# the accepted version reports timings for single-threaded execution.
 ```
 
 ---
@@ -146,3 +146,4 @@ RUSTFLAGS="-C target_cpu=native -Awarnings" cargo bench --bench hybridplonk_benc
 * For single-threaded measurements, set `RAYON_NUM_THREADS=1`.
 * For benchmark measurements, `RUSTFLAGS="-C target_cpu=native"` enables optimizations for the evaluator's CPU.
 * Benchmark timings are hardware-dependent and should therefore be interpreted relative to the machine on which the artifact is evaluated.
+* For accepted version of the paper, single-threaded experiments were performed on an Intel(R) Xeon(R) Silver 4214R CPU with 2.40GHz of clock frequency, 48 cores, and 128 GB RAM, running Ubuntu 22.04.
