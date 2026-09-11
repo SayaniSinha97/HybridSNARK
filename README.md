@@ -79,7 +79,7 @@ RUSTFLAGS="-Awarnings" cargo test --release --lib --features bls12_381
 
 # 8. Finally run the following script to find the prover and verifier times of
 # both the proposed SNARKs (HybridSpartan and HybridPlonk) over BLS12-381 and BN254 curves
-# for number_of_gates/number_of_constraints varying in the range {2^16, 2^18, 2^20, 2^22, 2^24, 2^26},
+# for number_of_gates/number_of_constraints varying in the range {2^16, 2^18, 2^20, 2^22, 2^24},
 # considering single-threaded execution:
 
 sh run_experiments.sh
