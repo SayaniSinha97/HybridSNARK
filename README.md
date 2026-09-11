@@ -50,58 +50,70 @@ In updatable SRS settings, **HybridSpartan** and **HybridPlonk** achieve the sho
 
 ---
 
-## Single Script to Run HybridSpartan and HybridPlonk over Varying Curves
+## Quick Guide for Artifact Evaluation
 
-After cloning the repository using,
+For evaluators who are unfamiliar with Rust, the following sequence is sufficient to build and test the artifact on Linux/macOS:
 
-```
-git clone git@github.com:SayaniSinha97/HybridSNARK.git
-```
+```bash
+# 1. Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-please go to the corresponding folder using,
+# 2. Verify installation
+rustc --version
+cargo --version
 
-```
+# 3. Clone the repository
+git clone https://github.com/SayaniSinha97/HybridSNARK.git
+
+# 4. Enter the repository
 cd HybridSNARK
-```
 
-and run the following script to find the prover and verifier times of both the proposed SNARKs (HybridSpartan and HybridPlonk) over BLS12-381 and BN254 curves for number_of_gates/number_of_constraints varying in the range {2^16, 2^18, 2^20, 2^22, 2^24, 2^26}, considering single-threaded execution.
+# 5. Build the artifact
+cargo build --release
 
-```
+# 6. To run all functional tests over BN254 curve:
+RUSTFLAGS="-Awarnings" cargo test --release --lib --features bn254
+
+# 7. To run all functional tests over BLS12-381 curve:
+RUSTFLAGS="-Awarnings" cargo test --release --lib --features bls12_381
+
+# 8. Finally run the following script to find the prover and verifier times of
+# both the proposed SNARKs (HybridSpartan and HybridPlonk) over BLS12-381 and BN254 curves
+# for number_of_gates/number_of_constraints varying in the range {2^16, 2^18, 2^20, 2^22, 2^24, 2^26},
+# considering single-threaded execution:
+
 sh run_experiments.sh
-```
 
-Note that the published version of the paper reports prover times of HybridSpartan and HybridPlonk over BLS12-381 and BN254 curve in Table 4 and Table 5 respectively for the number_of_gates/number_of_constraints varying in the range {2^18, 2^20, 2^22, 2^24, 2^26}. The experiments were performed on an Intel(R) Xeon(R) Silver 4214R CPU with 2.40GHz of clock frequency, 48 cores, and 128 GB RAM, running Ubuntu 22.04. For fair comparison with state-of-the-art SNARKs, the published version reports timings for single-threaded execution.
+# Note that the published version of the paper reports prover times of
+# HybridSpartan and HybridPlonk over BLS12-381 and BN254 curve in Table 4 and Table 5 respectively
+# for the number_of_gates/number_of_constraints varying in the range {2^18, 2^20, 2^22, 2^24, 2^26}.
+# The experiments were performed on an Intel(R) Xeon(R) Silver 4214R CPU with 2.40GHz of clock frequency,
+# 48 cores, and 128 GB RAM, running Ubuntu 22.04. For fair comparison with state-of-the-art SNARKs,
+# the published version reports timings for single-threaded execution.
+```
 
 ---
 
-## Testing
-
-To run all functional tests over BN2524 curve:
-```
-RUSTFLAGS="-Awarnings" cargo test --release --lib --features bn254
-```
-
-Similarly, to run all functional tests over BLS12-381 curve:
-```
-RUSTFLAGS="-Awarnings" cargo test --release --lib --features bn254
-```
+## Other Tests
 
 ### Running a Single Test with Timings
 
 While the script (run_experiments.sh) reports prover and verifier times for both the SNARKs, the underlying improved_sumcheck protocol and the implementation of samaritan_mlpcs can be tested as following and their individual prover and verifier timings can be observed:
 
 ```
-RUSTFLAGS="-Awarnings" cargo test --release generic_improved_sumcheck::tests::functionality_test -- --nocapture
+V=16 RUSTFLAGS="-Awarnings" cargo test --release --features bn254 generic_improved_sumcheck::tests::functionality_test -- --nocapture
 
-RUSTFLAGS="-Awarnings" cargo test --release samaritan_mlpcs::tests::functionality_test -- --nocapture
+V=16 RUSTFLAGS="-Awarnings" cargo test --release --features bls12_381 samaritan_mlpcs::tests::functionality_test -- --nocapture
 ```
+
+Here, 'V' is the log(number_of_gates). One can try with varying value of 'V'. Also, one can vary over two different features 'bn254' and 'bls12-381' to see performances over BN254 and BLS12-381 curves.
 
 To enforce single-threaded execution:
 
 ```
-RUSTFLAGS="-Awarnings" RAYON_NUM_THREADS=1 cargo test --release generic_improved_sumcheck::tests::functionality_test -- --nocapture
+V=16 RUSTFLAGS="-Awarnings" RAYON_NUM_THREADS=1 cargo test --release --features bls12_381 generic_improved_sumcheck::tests::functionality_test -- --nocapture
 
-RUSTFLAGS="-Awarnings" RAYON_NUM_THREADS=1 cargo test --release samaritan_mlpcs::tests::functionality_test -- --nocapture
+V=16 RUSTFLAGS="-Awarnings" RAYON_NUM_THREADS=1 cargo test --release --features bn254 samaritan_mlpcs::tests::functionality_test -- --nocapture
 ```
 
 ---
@@ -113,15 +125,24 @@ The script (run_experiments.sh) reports the timing for a single execution. Howev
 To benchmark the improved sumcheck protocol:
 
 ```
-RUSTFLAGS="-C target_cpu=native" cargo bench --bench improved_sumcheck_bench
+RUSTFLAGS="-C target_cpu=native -Awarnings" cargo bench --bench improved_sumcheck_bench
 ```
 
 To benchmark HybridSpartan and HybridPlonk:
 
 ```
-RUSTFLAGS="-C target_cpu=native" cargo bench --bench hybridspartan_bench
+RUSTFLAGS="-C target_cpu=native -Awarnings" cargo bench --bench hybridspartan_bench
 
-RUSTFLAGS="-C target_cpu=native" cargo bench --bench hybridplonk_bench
+RUSTFLAGS="-C target_cpu=native -Awarnings" cargo bench --bench hybridplonk_bench
 ```
 
-Other benchmarks can be run analogously by specifying the corresponding benchmark file.
+---
+
+## Notes on Reproducibility
+
+* The artifact is written in Rust and uses the **2024 Rust edition**.
+* The cryptographic and polynomial-arithmetic components use the Arkworks ecosystem.
+* Release-mode compilation (`--release`) should be used for performance measurements.
+* For single-threaded measurements, set `RAYON_NUM_THREADS=1`.
+* For benchmark measurements, `RUSTFLAGS="-C target_cpu=native"` enables optimizations for the evaluator's CPU.
+* Benchmark timings are hardware-dependent and should therefore be interpreted relative to the machine on which the artifact is evaluated.
