@@ -66,7 +66,7 @@ cargo --version
 
 ## Quick Guide for Artifact Evaluation
 
-For artifact evaluation, please follow the following sequence of commands:
+Once the prerequisites are satisfied, please follow the following sequence of commands for artifact evaluation:
 
 ```bash
 # 1. Clone the repository
@@ -86,18 +86,23 @@ RUSTFLAGS="-Awarnings" cargo test --release --lib --features bls12_381
 
 # 6. Finally run the following script to find the prover and verifier times of
 # both the proposed SNARKs (HybridSpartan and HybridPlonk) over BLS12-381 and BN254 curves
-# for number_of_gates/number_of_constraints varying in the range {2^16, 2^18, 2^20, 2^22, 2^24},
+# for number_of_gates/number_of_constraints varying in the range {2^{16}, 2^{18}, 2^{20}, 2^{22}, 2^{24}},
 # considering single-threaded execution:
 
 sh run_experiments.sh
 
-# Note that the accepted version of the paper reports prover times of
-# HybridSpartan and HybridPlonk over BLS12-381 and BN254 curve in Table 4 and Table 5 respectively
-# for the number_of_gates/number_of_constraints varying in the range {2^18, 2^20, 2^22, 2^24, 2^26}.
+# Note that the accepted version of the paper reports prover times of HybridSpartan and HybridPlonk
+# over BLS12-381 and BN254 curve in Table 4 and Table 5 respectively
+# for the number_of_gates/number_of_constraints varying in the range {2^{18}, 2^{20}, 2^{22}, 2^{24}, 2^{26}}.
 # The experiments were performed on an Intel(R) Xeon(R) Silver 4214R CPU with 2.40GHz of clock frequency,
 # 48 cores, and 128 GB RAM, running Ubuntu 22.04. For fair comparison with state-of-the-art SNARKs,
-# the accepted version reports timings for single-threaded execution.
+# the accepted version reports timings for single-threaded execution. 
+
 ```
+
+The major characteristics that should be reflected in the timing outcomes irrespective of the platform (for both HybridSpartan and HybridPlonk over BLS12-381 and BN254 curves) are the following:
+- prover time is linearly dependent on number_of_gates ($n$). Thus prover time for $n=2^{20}$ is approximately four times than $n=2^{18}$, prover time for $n=2^{22}$ is approximately four times than $n=2^{20}$ and so on.
+- verifier time is $O(\log{n})$. Thus verifier time is almost constant over the range $2^{16}, 2^{18}, 2^{20}, 2^{22}, 2^{24}$.
 
 ---
 
@@ -154,3 +159,4 @@ RUSTFLAGS="-C target_cpu=native -Awarnings" cargo bench --bench hybridplonk_benc
 * For benchmark measurements, `RUSTFLAGS="-C target_cpu=native"` enables optimizations for the evaluator's CPU.
 * Benchmark timings are hardware-dependent and should therefore be interpreted relative to the machine on which the artifact is evaluated.
 * For accepted version of the paper, single-threaded experiments were performed on an Intel(R) Xeon(R) Silver 4214R CPU with 2.40GHz of clock frequency, 48 cores, and 128 GB RAM, running Ubuntu 22.04.
+* Though Table 4 and Table 5 in the accepted version of the paper report prover times of HybridSpartan and HybridPlonk for number_of_gates in the range {$2^{18}, 2^{20}, 2^{22}, 2^{24}, 2^{26}$} over BLS12-381 and BN254 curves, the script (run_experiments.sh) does not include number_of_gates=$2^{26}$, because it might take too long to run; thus making the evaluation process inconvenient. Hence, the script only includes the range {$2^{18}, 2^{20}, 2^{22}, 2^{24}$} for evaluation.
