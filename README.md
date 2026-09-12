@@ -54,7 +54,7 @@ In updatable SRS settings, **HybridSpartan** and **HybridPlonk** achieve the sho
 
 The artifact assumes a working installation of Rust and Cargo, as well as the standard system build dependencies required by Rust and its dependencies. The artifact has been tested with the Rust toolchain specified by the project configuration.
 
-Users are expected to have these prerequisites installed and available in their system PATH before proceeding.
+Users are expected to have these prerequisites installed and available in their system PATH before proceeding. One can follow this document https://rust-lang.org/tools/install/ for installing Rust.
 
 Verify the Rust and Cargo installations using:
 ```
@@ -159,4 +159,4 @@ RUSTFLAGS="-C target_cpu=native -Awarnings" cargo bench --bench hybridplonk_benc
 * For benchmark measurements, `RUSTFLAGS="-C target_cpu=native"` enables optimizations for the evaluator's CPU.
 * Benchmark timings are hardware-dependent and should therefore be interpreted relative to the machine on which the artifact is evaluated.
 * For accepted version of the paper, single-threaded experiments were performed on an Intel(R) Xeon(R) Silver 4214R CPU with 2.40GHz of clock frequency, 48 cores, and 128 GB RAM, running Ubuntu 22.04.
-* Though Table 4 and Table 5 in the accepted version of the paper report prover times of HybridSpartan and HybridPlonk for number_of_gates in the range {$2^{18}, 2^{20}, 2^{22}, 2^{24}, 2^{26}$} over BLS12-381 and BN254 curves, the script (run_experiments.sh) does not include number_of_gates=$2^{26}$, because it might take too long to run; thus making the evaluation process inconvenient. Hence, the script only includes the range {$2^{18}, 2^{20}, 2^{22}, 2^{24}$} for evaluation.
+* Though Table 4 and Table 5 in the accepted version of the paper report prover times of HybridSpartan and HybridPlonk for number_of_gates in the range {2^{18}, 2^{20}, 2^{22}, 2^{24}, 2^{26}} over BLS12-381 and BN254 curves, the script (run_experiments.sh) does not include number_of_gates=2^{26}, because it might take too long to run; thus making the evaluation process inconvenient. Hence, the script only includes the range {2^{18}, 2^{20}, 2^{22}, 2^{24}} for evaluation.
