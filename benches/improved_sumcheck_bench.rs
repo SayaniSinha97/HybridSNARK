@@ -41,7 +41,7 @@ fn myfunc_linear_combined_poly(set_of_polys: &Vec<DensePolynomial<Fr>>, set_of_e
 }
 
 fn prove_benchmark(c: &mut Criterion) {
-  for num_vars in (14..=22).step_by(2) {
+  for num_vars in (14..=18).step_by(2) {
     let mut group = c.benchmark_group("ImprovedSumcheck_prove_benchmark");
 
     let n: usize = 1 << num_vars;
@@ -90,7 +90,7 @@ fn prove_benchmark(c: &mut Criterion) {
 }
 
 fn verify_benchmark(c: &mut Criterion) {
-  for num_vars in (14..=22).step_by(2) {
+  for num_vars in (14..=18).step_by(2) {
     let mut group = c.benchmark_group("ImprovedSumcheck_verify_benchmark");
 
     let n: usize = 1 << num_vars;

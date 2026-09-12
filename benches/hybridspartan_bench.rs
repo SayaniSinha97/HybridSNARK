@@ -33,7 +33,7 @@ type GenericImprovedSumcheck_Bn254 = GenericImprovedSumcheck<Bn254>;
 type HybridSpartan_Bn254 = HybridSpartan<Bn254>;
 
 fn prove_benchmark(c: &mut Criterion) {
-  for num_vars in (14..=22).step_by(2) {
+  for num_vars in (14..=18).step_by(2) {
     let mut group = c.benchmark_group("HybridSpartan_prove_benchmark");
 
     let n: usize = 1 << (num_vars - 2);
@@ -78,7 +78,7 @@ fn prove_benchmark(c: &mut Criterion) {
 }
 
 fn verify_benchmark(c: &mut Criterion) {
-  for num_vars in (14..=22).step_by(2) {
+  for num_vars in (14..=18).step_by(2) {
     let mut group = c.benchmark_group("HybridSpartan_verify_benchmark");
 
     let n: usize = 1 << (num_vars - 2);
