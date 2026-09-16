@@ -86,8 +86,10 @@ RUSTFLAGS="-Awarnings" cargo test --release --lib --features bls12_381
 
 # 6. Finally run the following script to find the prover and verifier times of
 # both the proposed SNARKs (HybridSpartan and HybridPlonk) over BLS12-381 and BN254 curves
-# for number_of_gates/number_of_constraints varying in the range {2^{16}, 2^{18}, 2^{20}, 2^{22}, 2^{24}},
-# considering single-threaded execution:
+# for number_of_gates/number_of_constraints varying in the range {2^{16}, 2^{18}, 2^{20},
+# 2^{22}, 2^{24}}, considering single-threaded execution (We deliberately exclude 2^{26}
+# in the run_experiments.sh file because it takes a long time. However, if required, one can modify the
+# script to extend the range and include the 2^{26} case):
 
 sh run_experiments.sh
 
@@ -159,4 +161,4 @@ RUSTFLAGS="-C target_cpu=native -Awarnings" cargo bench --bench hybridplonk_benc
 * For benchmark measurements, `RUSTFLAGS="-C target_cpu=native"` enables optimizations for the evaluator's CPU.
 * Benchmark timings are hardware-dependent and should therefore be interpreted relative to the machine on which the artifact is evaluated.
 * For accepted version of the paper, single-threaded experiments were performed on an Intel(R) Xeon(R) Silver 4214R CPU with 2.40GHz of clock frequency, 48 cores, and 128 GB RAM, running Ubuntu 22.04.
-* Though Table 4 and Table 5 in the accepted version of the paper report prover times of HybridSpartan and HybridPlonk for number_of_gates in the range {2^{18}, 2^{20}, 2^{22}, 2^{24}, 2^{26}} over BLS12-381 and BN254 curves, the script (run_experiments.sh) does not include number_of_gates=2^{26}, because it might take too long to run; thus making the evaluation process inconvenient. Hence, the script only includes the range {2^{18}, 2^{20}, 2^{22}, 2^{24}} for evaluation.
+* Though Table 4 and Table 5 in the accepted version of the paper report prover times of HybridSpartan and HybridPlonk for number_of_gates in the range {2^{18}, 2^{20}, 2^{22}, 2^{24}, 2^{26}} over BLS12-381 and BN254 curves, the script (run_experiments.sh) does not include number_of_gates=2^{26}, because it might take too long to run; thus making the evaluation process inconvenient. Hence, the script only includes the range {2^{18}, 2^{20}, 2^{22}, 2^{24}} for evaluation. One can modify the script (run_experiments.sh) to extend the range.
